@@ -1,7 +1,7 @@
 ---
 import * as shared from "#shared";
 import Layout from "#ui/Layout.astro";
-import ToolIcon from "#ui/ToolIcon.astro";
+import ToolTile from "#ui/ToolTile.astro";
 ---
 
 <Layout
@@ -19,15 +19,7 @@ import ToolIcon from "#ui/ToolIcon.astro";
   <ul class="tool-list">
     {shared.tools.map((tool) => (
       <li>
-        <a class="card tool-card" href={tool.href}>
-          <span class="tool-card__icon">
-            <ToolIcon name={tool.icon} />
-          </span>
-          <span class="tool-card__body">
-            <span class="tool-card__name">{tool.name}</span>
-            <span class="tool-card__description">{tool.description}</span>
-          </span>
-        </a>
+        <ToolTile tool={tool} />
       </li>
     ))}
   </ul>
@@ -46,54 +38,5 @@ import ToolIcon from "#ui/ToolIcon.astro";
     margin: 0;
     padding: 0;
     list-style: none;
-  }
-
-  .tool-card {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    aspect-ratio: 1;
-    container-type: inline-size;
-    overflow: hidden;
-    padding: var(--space-4);
-    text-decoration: none;
-    transition:
-      border-color 0.15s,
-      box-shadow 0.15s;
-  }
-
-  .tool-card:hover {
-    border-color: var(--color-accent);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
-  }
-
-  .tool-card__icon {
-    display: grid;
-    flex: 1;
-    place-items: center;
-    --tool-icon-size: 40cqi;
-  }
-
-  .tool-card__body {
-    display: grid;
-    text-align: center;
-    gap: var(--space-1);
-    min-width: 0;
-  }
-
-  .tool-card__name {
-    font-weight: 700;
-    font-size: 1.125rem;
-  }
-
-  .tool-card__description {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    color: var(--color-text-muted);
-    font-size: 0.8125rem;
-    line-height: 1.5;
   }
 </style>
