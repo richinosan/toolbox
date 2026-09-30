@@ -170,9 +170,6 @@ catalogs:
     '@fontsource/line-seed-jp':
       specifier: ^5.3.1
       version: 5.3.1
-    '@lucide/astro':
-      specifier: ^1.49.0
-      version: 1.49.0
     '@types/luxon':
       specifier: ^3.7.6
       version: 3.7.6
@@ -276,9 +273,6 @@ importers:
       '@fontsource/line-seed-jp':
         specifier: 'catalog:'
         version: 5.3.1
-      '@lucide/astro':
-        specifier: 'catalog:'
-        version: 1.49.0(astro@7.3.5(yaml@2.9.1))
       '@toolbox/shared':
         specifier: workspace:*
         version: link:../shared
@@ -1284,11 +1278,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
-
-  '@lucide/astro@1.49.0':
-    resolution: {integrity: sha512-hBLw14Mou0Or1KmAIiC3W3XW9HVNIFIAY6j++uVe3QLTPzByJ4RwhCvatdUyCJrgNObY6lv/Skm2XMqRsS4c+A==}
-    peerDependencies:
-      astro: ^4 || ^5 || ^6 || ^7
 
   '@napi-rs/wasm-runtime@1.2.4':
     resolution: {integrity: sha512-AJxoUD2/15ESHbvpcyjU274nsAPLuOtPHCk0vKJM5pj//Fg/B1FXNWjPnXTT9PymCYYiHo4zPj0ZomXBKhoy7g==}
@@ -3482,10 +3471,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
-
-  '@lucide/astro@1.49.0(astro@7.3.5(yaml@2.9.1))':
-    dependencies:
-      astro: 7.3.5(yaml@2.9.1)
 
   '@napi-rs/wasm-runtime@1.2.4(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
     dependencies:

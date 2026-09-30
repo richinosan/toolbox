@@ -6,7 +6,6 @@ packages:
 catalog:
   "@astrojs/check": ^0.9.10
   "@fontsource/line-seed-jp": ^5.3.1
-  "@lucide/astro": ^1.49.0
   "@types/luxon": ^3.7.6
   astro: ^7.3.5
   luxon: ^3.7.2
