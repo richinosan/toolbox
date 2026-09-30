@@ -27,7 +27,7 @@ packages/
 pnpm install
 pnpm build          # 全 app をビルド
 pnpm check          # 型チェック（astro check / tsc）
-pnpm lint           # ESLint
+pnpm lint           # oxlint + 型チェック
 pnpm format:check   # Prettier
 
 pnpm --filter @toolbox/dashboard dev      # 単体で開発
