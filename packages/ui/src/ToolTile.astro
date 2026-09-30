@@ -36,6 +36,12 @@ const { tool } = Astro.props;
     box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
   }
 
+  @media (prefers-reduced-motion: no-preference) {
+    .tool-tile:hover .tool-tile__icon {
+      animation: bounce-hop 0.5s ease-out;
+    }
+  }
+
   .tool-tile__icon {
     display: grid;
     flex: 1;
