@@ -26,7 +26,7 @@ export function parseDate(
   if (!text) return null;
 
   const dateTime = parseText(text, now.setZone(TIME_ZONE));
-  const weekday = dateTime?.setLocale("en").weekdayLong;
+  const weekday = dateTime?.setLocale("ja").weekdayLong;
   if (!dateTime?.isValid || !weekday) return null;
 
   return {
