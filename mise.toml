@@ -4,7 +4,10 @@ node = "26.10.0"
 pnpm = "12.8.1"
 
 # コマンドはすべて mise task に集約する（`mise tasks` で一覧）。
-# 各 app / package の CLI（astro, wrangler, tsc など）は node_modules/.bin から直接呼ぶ。
+# 依存はルートの package.json だけで管理し、CLI（astro, wrangler, tsc など）はルートの node_modules/.bin から使う。
+
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]
 
 [tasks.install]
 description = "依存パッケージをインストール（lockfile どおり）"
@@ -14,20 +17,20 @@ run = "ni --frozen"
 description = "全 app をビルド"
 run = '''
 for app in apps/*/; do
-  [ -f "$app/package.json" ] || continue
-  (cd "$app" && ./node_modules/.bin/astro build)
+  [ -f "$app/astro.config.mjs" ] || continue
+  astro build --root "$app"
 done
 '''
 
 [tasks.check]
-description = "型チェック（astro を使う package は astro check、それ以外は tsc）"
+description = "型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
 run = '''
-for pkg in apps/*/ packages/*/; do
-  [ -f "$pkg/package.json" ] || continue
-  if [ -x "$pkg/node_modules/.bin/astro" ]; then
-    (cd "$pkg" && ./node_modules/.bin/astro check)
+for dir in apps/*/ packages/*/; do
+  [ -f "$dir/tsconfig.json" ] || continue
+  if find "$dir" -name "*.astro" -not -path "*/node_modules/*" | grep -q .; then
+    astro check --root "$dir"
   else
-    (cd "$pkg" && ../../node_modules/.bin/tsc --noEmit)
+    tsc --noEmit -p "$dir"
   fi
 done
 '''
@@ -35,15 +38,15 @@ done
 [tasks.lint]
 description = "oxlint + 型チェック"
 depends = ["check"]
-run = "node_modules/.bin/oxlint"
+run = "oxlint"
 
 [tasks.format]
 description = "Prettier で整形"
-run = "node_modules/.bin/prettier --write ."
+run = "prettier --write ."
 
 [tasks."format-check"]
 description = "Prettier の整形チェック"
-run = "node_modules/.bin/prettier --check ."
+run = "prettier --check ."
 
 [tasks.tests]
 description = "lint・型チェック・整形チェックをまとめて実行"
@@ -53,14 +56,14 @@ depends = ["lint", "format-check"]
 [tasks.dev]
 description = "app を開発サーバーで起動（例: mise run dev calendar）"
 usage = 'arg "<app>" help="apps/ 配下の app 名"'
-run = 'cd "apps/$usage_app" && ./node_modules/.bin/astro dev'
+run = 'cd "apps/$usage_app" && astro dev'
 
 [tasks.preview]
 description = "ビルド済みの app を wrangler dev で起動（例: mise run preview calendar）"
 usage = 'arg "<app>" help="apps/ 配下の app 名"'
-run = 'cd "apps/$usage_app" && ./node_modules/.bin/wrangler dev'
+run = 'cd "apps/$usage_app" && wrangler dev'
 
 [tasks.deploy]
 description = "app をビルドして Cloudflare にデプロイ（例: mise run deploy calendar）"
 usage = 'arg "<app>" help="apps/ 配下の app 名"'
-run = 'cd "apps/$usage_app" && ./node_modules/.bin/astro build && ./node_modules/.bin/wrangler deploy'
+run = 'cd "apps/$usage_app" && astro build && wrangler deploy'
