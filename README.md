@@ -10,6 +10,7 @@ toolbox.richinosan.com
 ```
 apps/
   dashboard/   # /           ツール一覧（Worker: toolbox-dashboard）
+  calendar/    # /calendar   日付 → 曜日・Unix time（Worker: toolbox-calendar）
 packages/
   shared/      # ツール定義（tools.ts）
   ui/          # 共通レイアウト・アイコン・グローバル CSS（LINE Seed JP）
@@ -18,7 +19,8 @@ packages/
 - 依存バージョンは `pnpm-workspace.yaml` の `catalog` で一元管理し、各 `package.json` からは `catalog:` で参照します。
 - 各 app は自分の `astro.config.mjs` と `wrangler.jsonc`（Worker 名・route・assets）を持ち、単独でビルド・デプロイできます。
 - 各 app は静的ビルドし、Worker の static assets として配信します。
-- dashboard は `toolbox.richinosan.com/*` を担当します。各ツールはより具体的な route（`/<tool>` と `/<tool>/*`）を持つため、そちらが優先されます。
+  `/calendar` のようにサブパスを担当する app は `base` と `outDir: ./dist/<path>` を合わせ、URL パスと assets のパスを一致させています。
+- route はより具体的なパターンが優先されるため、`toolbox.richinosan.com/*` を dashboard、`/calendar` と `/calendar/*` を calendar が処理します。
   （route を有効にするには `toolbox.richinosan.com` の DNS レコードが Cloudflare でプロキシされている必要があります。）
 
 ## コマンド
@@ -30,6 +32,11 @@ pnpm check          # 型チェック（astro check / tsc）
 pnpm lint           # ESLint
 pnpm format:check   # Prettier
 
-pnpm --filter @toolbox/dashboard dev      # 単体で開発
-pnpm --filter @toolbox/dashboard deploy   # 単体でビルド + デプロイ
+pnpm --filter @toolbox/calendar dev      # 単体で開発
+pnpm --filter @toolbox/calendar deploy   # 単体でビルド + デプロイ
 ```
+
+## ツールの追加
+
+1. `apps/<tool>/` を既存 app と同じ形で作成し、`base` / `outDir` / `wrangler.jsonc` の route を `/<tool>` に合わせる
+2. `packages/shared/src/tools.ts` にツール定義を追加する（アイコンは `packages/ui/src/ToolIcon.astro` に対応を追加）

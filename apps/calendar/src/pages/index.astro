@@ -1,0 +1,152 @@
+---
+import { tools } from "@toolbox/shared";
+import Layout from "@toolbox/ui/Layout.astro";
+import ToolIcon from "@toolbox/ui/ToolIcon.astro";
+import { TIME_ZONE_LABEL } from "../lib/date";
+
+const tool = tools.find((t) => t.id === "calendar")!;
+---
+
+<Layout title={tool.name} description={tool.description}>
+  <a class="back-link" href="/">
+    ← ツール一覧へ戻る
+  </a>
+
+  <div class="tool-header">
+    <ToolIcon name={tool.icon} />
+    <div>
+      <h1 class="tool-header__name">{tool.name}</h1>
+      <p class="tool-header__description">{tool.description}</p>
+    </div>
+  </div>
+
+  <section class="card calendar">
+    <label class="field">
+      <span class="field__label">日付</span>
+      <input
+        id="date-input"
+        class="field__input"
+        type="date"
+        min="1000-01-01"
+        max="9999-12-31"
+      />
+    </label>
+    <p class="note">{TIME_ZONE_LABEL} の 00:00:00 として計算します。</p>
+
+    <dl class="result" aria-live="polite">
+      <div class="result__row">
+        <dt>曜日</dt>
+        <dd id="weekday">—</dd>
+      </div>
+      <div class="result__row">
+        <dt>Unix time（秒）</dt>
+        <dd id="unix-time" class="result__mono">
+          —
+        </dd>
+      </div>
+    </dl>
+  </section>
+</Layout>
+
+<script>
+  import { getDateInfo, todayInTimeZone } from "../lib/date";
+
+  const input = document.querySelector<HTMLInputElement>("#date-input")!;
+  const weekday = document.querySelector<HTMLElement>("#weekday")!;
+  const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
+
+  const render = () => {
+    const info = getDateInfo(input.value);
+    weekday.textContent = info?.weekday ?? "—";
+    unixTime.textContent = info ? String(info.unixTime) : "—";
+  };
+
+  if (!input.value) input.value = todayInTimeZone();
+  input.addEventListener("input", render);
+  render();
+</script>
+
+<style>
+  .back-link {
+    display: inline-block;
+    margin-bottom: var(--space-4);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    text-decoration: none;
+  }
+
+  .back-link:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+  }
+
+  .tool-header {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    margin-bottom: var(--space-6);
+  }
+
+  .tool-header__name {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  .tool-header__description {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .calendar {
+    max-width: 480px;
+  }
+
+  .field {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .field__label {
+    font-weight: 700;
+  }
+
+  .field__input {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: inherit;
+    font: inherit;
+  }
+
+  .note {
+    margin-top: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .result {
+    display: grid;
+    gap: var(--space-4);
+    margin: var(--space-6) 0 0;
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .result__row dt {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .result__row dd {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .result__mono {
+    font-variant-numeric: tabular-nums;
+  }
+</style>
