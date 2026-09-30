@@ -6,10 +6,22 @@
   "engines": {
     "node": ">=22.12.0"
   },
+  "imports": {
+    "#shared": "./packages/shared/src/index.ts",
+    "#ui/*": "./packages/ui/src/*"
+  },
+  "dependencies": {
+    "@fontsource/line-seed-jp": "^5.3.1",
+    "astro": "^7.3.5",
+    "luxon": "^3.7.2"
+  },
   "devDependencies": {
-    "oxlint": "catalog:",
-    "prettier": "catalog:",
-    "prettier-plugin-astro": "catalog:",
-    "typescript": "catalog:"
+    "@astrojs/check": "^0.9.10",
+    "@types/luxon": "^3.7.6",
+    "oxlint": "^1.86.0",
+    "prettier": "^3.9.9",
+    "prettier-plugin-astro": "^1.1.0",
+    "typescript": "~6.0.3",
+    "wrangler": "^4.145.0"
   }
 }

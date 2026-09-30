@@ -1,4 +1,4 @@
-/** アイコン名。実体は @toolbox/ui の ToolIcon で解決する。 */
+/** アイコン名。実体は #ui/ToolIcon.astro で解決する。 */
 export type ToolIconName = "calendar";
 
 export type ToolDefinition = {
