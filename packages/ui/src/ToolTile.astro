@@ -13,10 +13,7 @@ const { tool } = Astro.props;
   <span class="tool-tile__icon">
     <ToolIcon name={tool.icon} />
   </span>
-  <span class="tool-tile__body">
-    <span class="tool-tile__name">{tool.name}</span>
-    <span class="tool-tile__description">{tool.description}</span>
-  </span>
+  <span class="tool-tile__name">{tool.name}</span>
 </a>
 
 <style>
@@ -43,14 +40,7 @@ const { tool } = Astro.props;
     display: grid;
     flex: 1;
     place-items: center;
-    --tool-icon-size: 40cqi;
-  }
-
-  .tool-tile__body {
-    display: grid;
-    text-align: center;
-    gap: var(--space-1);
-    min-width: 0;
+    --tool-icon-size: 45cqi;
   }
 
   /* タイルの大きさに合わせて文字も縮める（ポップアップの小さいタイル用） */
@@ -59,18 +49,8 @@ const { tool } = Astro.props;
     font-weight: 700;
     font-size: clamp(0.8125rem, 10cqi, 1.125rem);
     line-height: 1.4;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .tool-tile__description {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    color: var(--color-text-muted);
-    font-size: clamp(0.6875rem, 7.5cqi, 0.8125rem);
-    line-height: 1.5;
   }
 </style>
