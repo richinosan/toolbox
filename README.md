@@ -17,6 +17,7 @@ packages/
 
 - `package.json` はルートの 1 つだけで、依存はすべてそこで管理します（app / package ごとに `package.json` を持たないルール）。
 - 共通コードは npm パッケージにせず、ルート `package.json` の `imports`（`#ui/*`, `#shared`）で参照します。
+- フォント（LINE Seed JP）は Astro の Fonts API で配信します。各 app の `astro.config.mjs` で `fonts` に `#ui/fonts.mjs` の設定を渡します（woff2 のみ・必要なサブセットだけ読み込み）。
 - 各 app は自分の `astro.config.mjs` と `wrangler.jsonc`（Worker 名・route・assets）を持ち、単独でビルド・デプロイできます。
 - 各 app は静的ビルドし、Worker の static assets として配信します。
 - dashboard は `toolbox.richinosan.com/*` を担当します。各ツールはより具体的な route（`/<tool>` と `/<tool>/*`）を持つため、そちらが優先されます。
