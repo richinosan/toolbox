@@ -1,12 +1,13 @@
 [tools]
 ni = "30.6.0"
 node = "26.10.0"
+"npm:cf" = "1.0.0-beta.7"
 pnpm = "12.8.1"
 
 # コマンドはすべて mise task に集約する（`mise tasks` で一覧）。
-# 依存はルートの package.json だけで管理し、CLI（astro, wrangler, tsc など）はルートの node_modules/.bin から使う。
-# Worker の設定は各 app の cloudflare.config.ts に書く（wrangler.jsonc は使わない）。
-# assets の置き場所はどの app も dist なので、wrangler には --assets で渡す。
+# 依存はルートの package.json だけで管理し、CLI（astro, tsc など）はルートの node_modules/.bin から使う。cf CLI は mise の npm:cf で入れる。
+# Cloudflare 操作は cf CLI を使う（wrangler は使わない）。Worker の設定は各 app の cloudflare.config.ts に書く。
+# astro build の最後に #ui/cloudflare.mjs が cf 用の Build Output（.cloudflare/output/）を書き出す。
 
 [env]
 _.path = ["{{config_root}}/node_modules/.bin"]
@@ -58,14 +59,9 @@ depends = ["lint", "format-check"]
 [tasks.dev]
 description = "app を開発サーバーで起動（例: mise run dev calendar）"
 usage = 'arg "<app>" help="apps/ 配下の app 名"'
-run = 'cd "apps/$usage_app" && astro dev'
-
-[tasks.preview]
-description = "ビルド済みの app を wrangler dev で起動（例: mise run preview calendar）"
-usage = 'arg "<app>" help="apps/ 配下の app 名"'
-run = 'cd "apps/$usage_app" && wrangler dev --experimental-new-config --assets dist'
+run = 'cd "apps/$usage_app" && cf dev'
 
 [tasks.deploy]
 description = "app をビルドして Cloudflare にデプロイ（例: mise run deploy calendar）"
 usage = 'arg "<app>" help="apps/ 配下の app 名"'
-run = 'cd "apps/$usage_app" && astro build && wrangler deploy --experimental-new-config --assets dist'
+run = 'cd "apps/$usage_app" && cf deploy'
