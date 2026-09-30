@@ -6,9 +6,6 @@
   "exports": {
     "./Layout.astro": "./src/Layout.astro"
   },
-  "scripts": {
-    "check": "astro check"
-  },
   "dependencies": {
     "@fontsource/line-seed-jp": "catalog:"
   },
