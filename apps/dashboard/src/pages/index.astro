@@ -29,7 +29,7 @@ import ToolIcon from "@toolbox/ui/ToolIcon.astro";
 
   .tool-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
     gap: var(--space-4);
     margin: 0;
     padding: 0;
@@ -38,9 +38,12 @@ import ToolIcon from "@toolbox/ui/ToolIcon.astro";
 
   .tool-card {
     display: flex;
-    gap: var(--space-4);
-    align-items: flex-start;
-    height: 100%;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: var(--space-3);
+    aspect-ratio: 1;
+    overflow: hidden;
+    padding: var(--space-4);
     text-decoration: none;
     transition:
       border-color 0.15s,
@@ -64,7 +67,13 @@ import ToolIcon from "@toolbox/ui/ToolIcon.astro";
   }
 
   .tool-card__description {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
+    line-height: 1.5;
   }
 </style>
