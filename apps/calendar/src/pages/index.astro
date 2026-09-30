@@ -149,6 +149,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
 
 <script>
   import * as luxon from "luxon";
+  import * as motion from "#ui/motion.ts";
   import * as date from "../lib/date";
 
   // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
@@ -201,12 +202,20 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
         .join("");
     };
 
+    let initialised = false;
     const hint = `日付のみの場合は ${date.TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
 
     const render = () => {
       const info = date.parseDate(text.value);
-      weekday.textContent = info?.weekday ?? "—";
-      unixTime.textContent = info ? String(info.unixTime) : "—";
+      const nextWeekday = info?.weekday ?? "—";
+      const nextUnixTime = info ? String(info.unixTime) : "—";
+      // 結果が変わったときだけ跳ねさせる（初期表示では動かさない）
+      if (initialised && weekday.textContent !== nextWeekday)
+        motion.bounce(weekday, "pop");
+      if (initialised && unixTime.textContent !== nextUnixTime)
+        motion.bounce(unixTime, "pop");
+      weekday.textContent = nextWeekday;
+      unixTime.textContent = nextUnixTime;
       copyButton.disabled = !info;
       picker.value = info?.dateTime.toISODate() ?? "";
       pickerLabel.textContent = info
@@ -228,6 +237,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     const showTooltip = (message: string) => {
       copyTooltip.textContent = message;
       copyTooltip.classList.add("copy__tooltip--visible");
+      motion.bounce(copyTooltip, "in");
       clearTimeout(tooltipTimer);
       tooltipTimer = setTimeout(() => {
         copyTooltip.classList.remove("copy__tooltip--visible");
@@ -262,6 +272,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       text.value =
         luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate() ?? "";
     render();
+    initialised = true;
   };
   document.addEventListener("astro:page-load", init);
 </script>
@@ -469,6 +480,13 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     transition:
       opacity 0.15s,
       transform 0.15s;
+  }
+
+  /* 結果が変わったときに跳ねさせるので、左端を基準に拡大する */
+  #weekday,
+  #unix-time {
+    display: inline-block;
+    transform-origin: left center;
   }
 
   .copy__tooltip--visible {
