@@ -1,0 +1,230 @@
+---
+import * as shared from "#shared";
+import Layout from "#ui/Layout.astro";
+import ToolIcon from "#ui/ToolIcon.astro";
+
+const tool = shared.tools.find((t) => t.id === "calendar")!;
+---
+
+<Layout
+  title={tool.name}
+  description={tool.description}
+  spec={{
+    overview:
+      "入力された日付の解釈と曜日・Unix time の計算は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
+    network: "なし（入力した日付がサーバーへ送信されることはありません）",
+    storage: "なし（localStorage・Cookie などには何も保存しません）",
+    libraries: ["luxon（日付の解釈と計算）"],
+  }}
+>
+  <a class="back-link" href="/">
+    ← ツール一覧へ戻る
+  </a>
+
+  <div class="tool-header">
+    <ToolIcon name={tool.icon} />
+    <div>
+      <h1 class="tool-header__name">{tool.name}</h1>
+      <p class="tool-header__description">{tool.description}</p>
+    </div>
+  </div>
+
+  <ul class="features">
+    {tool.features.map((feature) => (
+      <li>{feature}</li>
+    ))}
+  </ul>
+
+  <section class="card calendar">
+    <div class="field">
+      <label class="field__label" for="date-text">
+        日付
+      </label>
+      <div class="field__inputs">
+        <input
+          id="date-text"
+          class="field__input field__input--text"
+          type="text"
+          inputmode="text"
+          autocomplete="off"
+          placeholder="2026-10-01, 10/1, 20261001 など"
+          aria-describedby="date-note"
+        />
+        <input
+          id="date-picker"
+          class="field__input field__input--picker"
+          type="date"
+          aria-label="カレンダーから選択"
+        />
+      </div>
+    </div>
+    <p id="date-note" class="note" aria-live="polite"></p>
+
+    <dl class="result" aria-live="polite">
+      <div class="result__row">
+        <dt>曜日</dt>
+        <dd id="weekday">—</dd>
+      </div>
+      <div class="result__row">
+        <dt>Unix time（秒）</dt>
+        <dd id="unix-time" class="result__mono">
+          —
+        </dd>
+      </div>
+    </dl>
+  </section>
+</Layout>
+
+<script>
+  import * as luxon from "luxon";
+  import * as date from "../lib/date";
+
+  const text = document.querySelector<HTMLInputElement>("#date-text")!;
+  const picker = document.querySelector<HTMLInputElement>("#date-picker")!;
+  const note = document.querySelector<HTMLElement>("#date-note")!;
+  const weekday = document.querySelector<HTMLElement>("#weekday")!;
+  const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
+
+  const hint = `日付のみの場合は ${date.TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
+
+  const render = () => {
+    const info = date.parseDate(text.value);
+    weekday.textContent = info?.weekday ?? "—";
+    unixTime.textContent = info ? String(info.unixTime) : "—";
+    picker.value = info?.dateTime.toISODate() ?? "";
+    note.classList.toggle("note--error", !info && text.value.trim() !== "");
+    if (info) {
+      note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${date.TIME_ZONE_LABEL}）として計算しています。`;
+    } else {
+      note.textContent = text.value.trim()
+        ? "日付として解釈できません。"
+        : hint;
+    }
+  };
+
+  text.addEventListener("input", render);
+  picker.addEventListener("input", () => {
+    text.value = picker.value;
+    render();
+  });
+
+  if (!text.value)
+    text.value = luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate() ?? "";
+  render();
+</script>
+
+<style>
+  .back-link {
+    display: inline-block;
+    margin-bottom: var(--space-4);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    text-decoration: none;
+  }
+
+  .back-link:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+  }
+
+  .tool-header {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    margin-bottom: var(--space-6);
+  }
+
+  .tool-header__name {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  .tool-header__description {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .features {
+    margin: calc(var(--space-2) * -1) 0 var(--space-6);
+    padding-left: 1.25em;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .calendar {
+    max-width: 480px;
+  }
+
+  .field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .field__label {
+    font-weight: 700;
+  }
+
+  .field__inputs {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .field__input {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: inherit;
+    font: inherit;
+  }
+
+  .field__input--text {
+    flex: 1 1 12rem;
+    width: auto;
+    min-width: 0;
+  }
+
+  .field__input--picker {
+    flex: 0 1 11rem;
+    width: auto;
+    min-width: 0;
+  }
+
+  .note {
+    margin-top: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .note--error {
+    color: light-dark(#c5221f, #f28b82);
+  }
+
+  .result {
+    display: grid;
+    gap: var(--space-4);
+    margin: var(--space-6) 0 0;
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .result__row dt {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .result__row dd {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .result__mono {
+    font-variant-numeric: tabular-nums;
+  }
+</style>
