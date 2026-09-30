@@ -47,4 +47,12 @@ import ToolTile from "#ui/ToolTile.astro";
     padding: 0;
     list-style: none;
   }
+
+  /* タイルは表示時に少しずつずらして跳ねて出る（ずらすのは先頭 12 個まで） */
+  @media (prefers-reduced-motion: no-preference) {
+    .tool-list li {
+      animation: bounce-in 0.4s ease-out backwards;
+      animation-delay: calc(min(sibling-index(), 12) * 30ms);
+    }
+  }
 </style>
