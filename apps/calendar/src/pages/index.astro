@@ -16,6 +16,23 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     storage: "なし（localStorage・Cookie などには何も保存しません）",
     libraries: ["luxon（日付の解釈と計算）"],
   }}
+  tour={[
+    {
+      target: "#date-text",
+      title: "日付を入力",
+      body: "2026-10-01、2026年10月1日、10/1、20261001 などの形式で入力できます。年や月を省略すると今年・今月として扱います。",
+    },
+    {
+      target: "#date-picker",
+      title: "カレンダーから選ぶ",
+      body: "カレンダーで日付を選ぶこともできます。テキスト入力と連動します。",
+    },
+    {
+      target: ".result",
+      title: "結果",
+      body: "入力した日付の曜日と Unix time（秒）が表示されます。",
+    },
+  ]}
 >
   <a class="back-link" href="/">
     ← ツール一覧へ戻る
