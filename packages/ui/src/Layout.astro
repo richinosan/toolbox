@@ -5,7 +5,7 @@ import GitHubIcon from "./icons/GitHubIcon.astro";
 import GridIcon from "./icons/GridIcon.astro";
 import HelpIcon from "./icons/HelpIcon.astro";
 import type * as specTypes from "./spec";
-import ToolIcon from "./ToolIcon.astro";
+import ToolTile from "./ToolTile.astro";
 import "./styles/global.css";
 
 interface Props {
@@ -92,18 +92,7 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
       <ul class="tools-menu">
         {shared.tools.map((tool) => (
           <li>
-            <a class="tools-menu__item" href={tool.href}>
-              <ToolIcon name={tool.icon} />
-              <span class="tools-menu__body">
-                <span class="tools-menu__name">{tool.name}</span>
-                <span class="tools-menu__description">{tool.description}</span>
-                <ul class="tools-menu__features">
-                  {tool.features.map((feature) => (
-                    <li>{feature}</li>
-                  ))}
-                </ul>
-              </span>
-            </a>
+            <ToolTile tool={tool} />
           </li>
         ))}
       </ul>
@@ -238,7 +227,7 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     inset: 3.5rem auto auto
       max(var(--gutter), calc((100vw - var(--page-width)) / 2));
     margin: 0;
-    width: min(24rem, calc(100vw - var(--gutter) * 2));
+    width: min(28rem, calc(100vw - var(--gutter) * 2));
   }
 
   .popover--tools::backdrop {
@@ -247,43 +236,11 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 
   .tools-menu {
     display: grid;
-    gap: var(--space-1);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
+    gap: var(--space-3);
     margin: 0;
     padding: 0;
     list-style: none;
-  }
-
-  .tools-menu__item {
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
-    padding: var(--space-2);
-    border-radius: 8px;
-    text-decoration: none;
-  }
-
-  .tools-menu__item:hover {
-    background: var(--color-bg);
-  }
-
-  .tools-menu__body {
-    display: grid;
-    min-width: 0;
-  }
-
-  .tools-menu__name {
-    font-weight: 700;
-  }
-
-  .tools-menu__description,
-  .tools-menu__features {
-    color: var(--color-text-muted);
-    font-size: 0.8125rem;
-  }
-
-  .tools-menu__features {
-    margin: var(--space-1) 0 0;
-    padding-left: 1.25em;
   }
 
   .tools-menu__all {
