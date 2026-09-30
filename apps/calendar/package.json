@@ -13,10 +13,12 @@
   "dependencies": {
     "@toolbox/shared": "workspace:*",
     "@toolbox/ui": "workspace:*",
-    "astro": "catalog:"
+    "astro": "catalog:",
+    "luxon": "catalog:"
   },
   "devDependencies": {
     "@astrojs/check": "catalog:",
+    "@types/luxon": "catalog:",
     "typescript": "catalog:",
     "wrangler": "catalog:"
   }

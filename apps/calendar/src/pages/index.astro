@@ -2,7 +2,6 @@
 import { tools } from "@toolbox/shared";
 import Layout from "@toolbox/ui/Layout.astro";
 import ToolIcon from "@toolbox/ui/ToolIcon.astro";
-import { TIME_ZONE_LABEL } from "../lib/date";
 
 const tool = tools.find((t) => t.id === "calendar")!;
 ---
@@ -21,17 +20,31 @@ const tool = tools.find((t) => t.id === "calendar")!;
   </div>
 
   <section class="card calendar">
-    <label class="field">
-      <span class="field__label">日付</span>
-      <input
-        id="date-input"
-        class="field__input"
-        type="date"
-        min="1000-01-01"
-        max="9999-12-31"
-      />
-    </label>
-    <p class="note">{TIME_ZONE_LABEL} の 00:00:00 として計算します。</p>
+    <div class="field">
+      <label class="field__label" for="date-text">
+        日付
+      </label>
+      <div class="field__inputs">
+        <input
+          id="date-text"
+          class="field__input field__input--text"
+          type="text"
+          inputmode="text"
+          autocomplete="off"
+          placeholder="2026-10-01, 10/1, 20261001 など"
+          aria-describedby="date-note"
+        />
+        <input
+          id="date-picker"
+          class="field__input field__input--picker"
+          type="date"
+          min="1000-01-01"
+          max="9999-12-31"
+          aria-label="カレンダーから選択"
+        />
+      </div>
+    </div>
+    <p id="date-note" class="note" aria-live="polite"></p>
 
     <dl class="result" aria-live="polite">
       <div class="result__row">
@@ -49,20 +62,40 @@ const tool = tools.find((t) => t.id === "calendar")!;
 </Layout>
 
 <script>
-  import { getDateInfo, todayInTimeZone } from "../lib/date";
+  import { DateTime } from "luxon";
+  import { parseDate, TIME_ZONE, TIME_ZONE_LABEL } from "../lib/date";
 
-  const input = document.querySelector<HTMLInputElement>("#date-input")!;
+  const text = document.querySelector<HTMLInputElement>("#date-text")!;
+  const picker = document.querySelector<HTMLInputElement>("#date-picker")!;
+  const note = document.querySelector<HTMLElement>("#date-note")!;
   const weekday = document.querySelector<HTMLElement>("#weekday")!;
   const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
 
+  const hint = `日付のみの場合は ${TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
+
   const render = () => {
-    const info = getDateInfo(input.value);
+    const info = parseDate(text.value);
     weekday.textContent = info?.weekday ?? "—";
     unixTime.textContent = info ? String(info.unixTime) : "—";
+    picker.value = info?.dateTime.toISODate() ?? "";
+    note.classList.toggle("note--error", !info && text.value.trim() !== "");
+    if (info) {
+      note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${TIME_ZONE_LABEL}）として計算しています。`;
+    } else {
+      note.textContent = text.value.trim()
+        ? "日付として解釈できません。"
+        : hint;
+    }
   };
 
-  if (!input.value) input.value = todayInTimeZone();
-  input.addEventListener("input", render);
+  text.addEventListener("input", render);
+  picker.addEventListener("input", () => {
+    text.value = picker.value;
+    render();
+  });
+
+  if (!text.value)
+    text.value = DateTime.now().setZone(TIME_ZONE).toISODate() ?? "";
   render();
 </script>
 
@@ -110,6 +143,12 @@ const tool = tools.find((t) => t.id === "calendar")!;
     font-weight: 700;
   }
 
+  .field__inputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
   .field__input {
     width: 100%;
     min-height: 2.75rem;
@@ -121,10 +160,26 @@ const tool = tools.find((t) => t.id === "calendar")!;
     font: inherit;
   }
 
+  .field__input--text {
+    flex: 1 1 12rem;
+    width: auto;
+    min-width: 0;
+  }
+
+  .field__input--picker {
+    flex: 0 1 11rem;
+    width: auto;
+    min-width: 0;
+  }
+
   .note {
     margin-top: var(--space-2);
     color: var(--color-text-muted);
     font-size: 0.8125rem;
+  }
+
+  .note--error {
+    color: light-dark(#c5221f, #f28b82);
   }
 
   .result {
