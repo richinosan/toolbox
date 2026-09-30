@@ -1,6 +1,5 @@
 ---
-import "@fontsource/line-seed-jp/400.css";
-import "@fontsource/line-seed-jp/700.css";
+import { Font } from "astro:assets";
 import "./styles/global.css";
 
 interface Props {
@@ -19,6 +18,7 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{pageTitle}</title>
+    <Font cssVariable="--font-line-seed-jp" />
     {description && <meta name="description" content={description} />}
   </head>
   <body>

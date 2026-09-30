@@ -8,9 +8,8 @@
   --color-accent-soft: #e6f9ee;
   --color-focus: #1a73e8;
 
-  --font-sans:
-    "LINE Seed JP", system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP",
-    sans-serif;
+  /* --font-line-seed-jp は Astro の Fonts API（#ui/fonts.mjs）が定義する */
+  --font-sans: var(--font-line-seed-jp, system-ui, sans-serif);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
