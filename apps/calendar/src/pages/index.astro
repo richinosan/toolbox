@@ -23,7 +23,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       body: "2026-10-01、2026年10月1日、10/1、20261001 などの形式で入力できます。年や月を省略すると今年・今月として扱います。",
     },
     {
-      target: "#date-picker",
+      target: "#date-picker-button",
       title: "カレンダーから選ぶ",
       body: "カレンダーで日付を選ぶこともできます。テキスト入力と連動します。",
     },
@@ -67,12 +67,39 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
           placeholder="2026-10-01, 10/1, 20261001 など"
           aria-describedby="date-note"
         />
-        <input
-          id="date-picker"
-          class="field__input field__input--picker"
-          type="date"
-          aria-label="カレンダーから選択"
-        />
+        <!-- ネイティブの date input はブラウザの言語設定で表記が変わる（mm/dd/yyyy など）ため、
+             表示はサービスの言語設定に合わせたボタンにして、カレンダーは showPicker() で開く -->
+        <div class="picker">
+          <button
+            id="date-picker-button"
+            class="field__input picker__button"
+            type="button"
+            aria-label="カレンダーから選択"
+          >
+            <span id="date-picker-label" class="picker__label">
+              yyyy/mm/dd
+            </span>
+            <svg
+              class="picker__icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+              <path d="M3 10h18M8 3v4M16 3v4"></path>
+            </svg>
+          </button>
+          <input
+            id="date-picker"
+            class="picker__native"
+            type="date"
+            tabindex="-1"
+            aria-hidden="true"
+          />
+        </div>
       </div>
     </div>
     <p id="date-note" class="note" aria-live="polite"></p>
@@ -84,8 +111,35 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       </div>
       <div class="result__row">
         <dt>Unix time（秒）</dt>
-        <dd id="unix-time" class="result__mono">
-          —
+        <dd class="result__value">
+          <span id="unix-time" class="result__mono">
+            —
+          </span>
+          <span class="copy">
+            <button
+              id="copy-unix-time"
+              class="copy__button"
+              type="button"
+              aria-label="Unix time をコピー"
+              aria-describedby="copy-tooltip"
+              disabled
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+                <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
+              </svg>
+            </button>
+            <!-- レイアウトに影響しないよう、コピー結果はボタン上のツールチップで出す -->
+            <span id="copy-tooltip" class="copy__tooltip" role="status"></span>
+          </span>
         </dd>
       </div>
     </dl>
@@ -98,9 +152,49 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
 
   const text = document.querySelector<HTMLInputElement>("#date-text")!;
   const picker = document.querySelector<HTMLInputElement>("#date-picker")!;
+  const pickerButton = document.querySelector<HTMLButtonElement>(
+    "#date-picker-button",
+  )!;
+  const pickerLabel =
+    document.querySelector<HTMLElement>("#date-picker-label")!;
   const note = document.querySelector<HTMLElement>("#date-note")!;
   const weekday = document.querySelector<HTMLElement>("#weekday")!;
   const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
+  const copyButton =
+    document.querySelector<HTMLButtonElement>("#copy-unix-time")!;
+  const copyTooltip = document.querySelector<HTMLElement>("#copy-tooltip")!;
+
+  // 日付の表記はブラウザではなくサービスの言語設定（<html lang>）に合わせる。ja なら yyyy/mm/dd
+  const dateFormat = new Intl.DateTimeFormat(document.documentElement.lang, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "UTC",
+  });
+  const datePlaceholder = dateFormat
+    .formatToParts(new Date(0))
+    .map((part) =>
+      part.type === "year"
+        ? "yyyy"
+        : part.type === "month"
+          ? "mm"
+          : part.type === "day"
+            ? "dd"
+            : part.value,
+    )
+    .join("");
+  const formatDate = (value: luxon.DateTime) => {
+    const utc = new Date(0);
+    // Date.UTC は 0〜99 年を 1900 年代にずらすので setUTCFullYear で組み立てる
+    utc.setUTCFullYear(value.year, value.month - 1, value.day);
+    // 年は 4 桁に揃える（Intl は 50 年を "50" と出すため）
+    return dateFormat
+      .formatToParts(utc)
+      .map((part) =>
+        part.type === "year" ? part.value.padStart(4, "0") : part.value,
+      )
+      .join("");
+  };
 
   const hint = `日付のみの場合は ${date.TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
 
@@ -108,7 +202,12 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     const info = date.parseDate(text.value);
     weekday.textContent = info?.weekday ?? "—";
     unixTime.textContent = info ? String(info.unixTime) : "—";
+    copyButton.disabled = !info;
     picker.value = info?.dateTime.toISODate() ?? "";
+    pickerLabel.textContent = info
+      ? formatDate(info.dateTime)
+      : datePlaceholder;
+    pickerLabel.classList.toggle("picker__label--empty", !info);
     note.classList.toggle("note--error", !info && text.value.trim() !== "");
     if (info) {
       note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${date.TIME_ZONE_LABEL}）として計算しています。`;
@@ -120,6 +219,35 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   };
 
   text.addEventListener("input", render);
+  let tooltipTimer: ReturnType<typeof setTimeout> | undefined;
+  const showTooltip = (message: string) => {
+    copyTooltip.textContent = message;
+    copyTooltip.classList.add("copy__tooltip--visible");
+    clearTimeout(tooltipTimer);
+    tooltipTimer = setTimeout(() => {
+      copyTooltip.classList.remove("copy__tooltip--visible");
+    }, 1500);
+  };
+
+  copyButton.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(unixTime.textContent ?? "");
+      showTooltip("コピーしました");
+    } catch {
+      // クリップボードが使えない環境では値を選択状態にして手動コピーに任せる
+      getSelection()?.selectAllChildren(unixTime);
+      showTooltip("選択しました");
+    }
+  });
+
+  pickerButton.addEventListener("click", () => {
+    try {
+      picker.showPicker();
+    } catch {
+      // showPicker() に未対応のブラウザではネイティブ input をクリックして開く
+      picker.click();
+    }
+  });
   picker.addEventListener("input", () => {
     text.value = picker.value;
     render();
@@ -206,10 +334,40 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     min-width: 0;
   }
 
-  .field__input--picker {
+  .picker {
+    position: relative;
     flex: 0 1 11rem;
-    width: auto;
     min-width: 0;
+  }
+
+  .picker__button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+
+  .picker__label--empty {
+    color: var(--color-text-muted);
+  }
+
+  .picker__icon {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-text-muted);
+  }
+
+  /* showPicker() の位置合わせ用に残し、見た目と操作はボタンに任せる */
+  .picker__native {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
   }
 
   .note {
@@ -241,7 +399,78 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     font-weight: 700;
   }
 
+  .result__value {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
   .result__mono {
+    min-width: 0;
     font-variant-numeric: tabular-nums;
+  }
+
+  .copy {
+    position: relative;
+    flex: none;
+  }
+
+  .copy__button {
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+
+  .copy__button:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-text);
+  }
+
+  .copy__button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .copy__button svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .copy__tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    padding: var(--space-1) var(--space-2);
+    border-radius: 6px;
+    background: var(--color-text);
+    color: var(--color-surface);
+    font-size: 0.75rem;
+    font-weight: 400;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 4px);
+    transition:
+      opacity 0.15s,
+      transform 0.15s;
+  }
+
+  .copy__tooltip--visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .copy__tooltip {
+      transition: none;
+    }
   }
 </style>
