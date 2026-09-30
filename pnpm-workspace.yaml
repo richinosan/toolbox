@@ -1,30 +1,16 @@
-packages:
-  - apps/*
-  - packages/*
-
-# 全 app / package で共有する依存バージョン。各 package.json では "catalog:" で参照する。
-catalog:
-  "@astrojs/check": ^0.9.10
-  "@fontsource/line-seed-jp": ^5.3.1
-  astro: ^7.3.5
-  oxlint: ^1.86.0
-  prettier: ^3.9.9
-  prettier-plugin-astro: ^1.1.0
-  typescript: ~6.0.3
-  wrangler: ^4.145.0
+# package.json はルートの 1 つだけで、依存はすべてそこで管理する（app / package ごとに持たない）。
+# このファイルは pnpm の設定のためだけに置いている。
 
 allowBuilds:
   esbuild: true
   sharp: true
   workerd: true
-
 minimumReleaseAgeExclude:
   - "@cloudflare/workerd-darwin-64@1.20260930.2"
   - "@cloudflare/workerd-darwin-arm64@1.20260930.2"
   - "@cloudflare/workerd-linux-64@1.20260930.2"
   - "@cloudflare/workerd-linux-arm64@1.20260930.2"
   - "@cloudflare/workerd-windows-64@1.20260930.2"
-  - "@lucide/astro@1.49.0"
   - miniflare@5.20260930.0-alpha
   - workerd@1.20260930.2
   - wrangler@4.145.0
