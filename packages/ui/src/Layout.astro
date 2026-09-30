@@ -1,13 +1,19 @@
 ---
-import { Font } from "astro:assets";
+import * as assets from "astro:assets";
+import GitHubIcon from "./icons/GitHubIcon.astro";
+import HelpIcon from "./icons/HelpIcon.astro";
+import type * as specTypes from "./spec";
 import "./styles/global.css";
 
 interface Props {
   title: string;
   description?: string;
+  /** ？ボタンで表示する技術仕様（全ページ必須） */
+  spec: specTypes.TechSpec;
 }
 
-const { title, description } = Astro.props;
+const { title, description, spec } = Astro.props;
+const repositoryUrl = "https://github.com/richinosan/toolbox";
 const siteName = "Toolbox";
 const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 ---
@@ -18,7 +24,7 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{pageTitle}</title>
-    <Font cssVariable="--font-line-seed-jp" />
+    <assets.Font cssVariable="--font-line-seed-jp" />
     {description && <meta name="description" content={description} />}
   </head>
   <body>
@@ -27,8 +33,62 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
         <a class="site-header__brand" href="/">
           {siteName}
         </a>
+        <div class="site-header__actions">
+          <button
+            class="icon-button"
+            type="button"
+            popovertarget="spec-popover"
+            aria-label="技術仕様"
+            title="技術仕様"
+          >
+            <HelpIcon />
+          </button>
+          <a
+            class="icon-button"
+            href={repositoryUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="GitHub リポジトリ"
+            title="GitHub リポジトリ"
+          >
+            <GitHubIcon />
+          </a>
+        </div>
       </div>
     </header>
+
+    <div id="spec-popover" class="popover" popover aria-labelledby="spec-title">
+      <div class="popover__header">
+        <h2 id="spec-title" class="popover__title">
+          技術仕様
+        </h2>
+        <button
+          class="icon-button"
+          type="button"
+          popovertarget="spec-popover"
+          popovertargetaction="hide"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+      </div>
+      <dl class="spec">
+        <dt>動作</dt>
+        <dd>{spec.overview}</dd>
+        <dt>ネットワーク通信</dt>
+        <dd>{spec.network}</dd>
+        <dt>保存される情報</dt>
+        <dd>{spec.storage}</dd>
+        <dt>使用ライブラリ</dt>
+        <dd>
+          {spec.libraries.length > 0 ? spec.libraries.join("、") : "なし"}
+        </dd>
+        <dt>ソースコード</dt>
+        <dd>
+          <a href={repositoryUrl}>{repositoryUrl.replace("https://", "")}</a>
+        </dd>
+      </dl>
+    </div>
     <main class="container site-main">
       <slot />
     </main>
@@ -47,6 +107,12 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     min-height: 3.5rem;
   }
 
+  .site-header__actions {
+    display: flex;
+    gap: var(--space-1);
+    margin-left: auto;
+  }
+
   .site-header__brand {
     font-weight: 700;
     font-size: 1.125rem;
@@ -55,5 +121,78 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 
   .site-main {
     padding-block: var(--space-8);
+  }
+
+  .icon-button {
+    display: inline-grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .icon-button:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  .icon-button :global(svg) {
+    width: 1.375rem;
+    height: 1.375rem;
+  }
+
+  .popover {
+    width: min(32rem, calc(100vw - var(--gutter) * 2));
+    max-height: calc(100dvh - var(--space-8) * 2);
+    overflow: auto;
+    padding: var(--space-6);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: 0 8px 32px rgb(0 0 0 / 0.16);
+  }
+
+  .popover::backdrop {
+    background: rgb(0 0 0 / 0.3);
+  }
+
+  .popover__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+  }
+
+  .popover__title {
+    font-size: 1.125rem;
+  }
+
+  .spec {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+  }
+
+  .spec dt {
+    margin-top: var(--space-3);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .spec dt:first-child {
+    margin-top: 0;
+  }
+
+  .spec dd {
+    margin: 0;
   }
 </style>
