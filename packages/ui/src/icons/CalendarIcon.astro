@@ -2,9 +2,11 @@
 // Office（Fluent）風のカレンダーアイコン。グラデーションと重なりで立体感を出す。
 // 同じページに複数回描画される（ヘッダーのツール一覧など）ため、グラデーション等の id を描画ごとに変える。
 // 非表示の要素内の定義を参照すると描画されないので、id の共有は不可。
-const globalCounter = globalThis as typeof globalThis & { __tbIconId?: number };
-const instance = (globalCounter.__tbIconId =
-  (globalCounter.__tbIconId ?? 0) + 1);
+const globalCounter = globalThis as typeof globalThis & {
+  toolboxIconRenderCount?: number;
+};
+const instance = (globalCounter.toolboxIconRenderCount =
+  (globalCounter.toolboxIconRenderCount ?? 0) + 1);
 const id = (name: string) => `tb-calendar-${name}-${instance}`;
 ---
 
