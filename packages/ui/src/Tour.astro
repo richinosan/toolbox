@@ -1,0 +1,242 @@
+---
+import type * as specTypes from "./spec";
+
+interface Props {
+  steps: readonly specTypes.TourStep[];
+}
+
+const { steps } = Astro.props;
+---
+
+<div id="tour" class="tour" popover="manual" data-steps={JSON.stringify(steps)}>
+  <div class="tour__spotlight"></div>
+  <div
+    class="tour__bubble"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="tour-title"
+    aria-describedby="tour-body"
+  >
+    <p class="tour__progress"></p>
+    <h2 id="tour-title" class="tour__title"></h2>
+    <p id="tour-body" class="tour__body"></p>
+    <div class="tour__actions">
+      <button
+        class="tour__button tour__button--skip"
+        type="button"
+        data-tour="close"
+      >
+        終了
+      </button>
+      <button class="tour__button" type="button" data-tour="prev">
+        戻る
+      </button>
+      <button
+        class="tour__button tour__button--primary"
+        type="button"
+        data-tour="next"
+      >
+        次へ
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const tour = document.querySelector<HTMLElement>("#tour")!;
+  const spotlight = tour.querySelector<HTMLElement>(".tour__spotlight")!;
+  const bubble = tour.querySelector<HTMLElement>(".tour__bubble")!;
+  const progress = tour.querySelector<HTMLElement>(".tour__progress")!;
+  const title = tour.querySelector<HTMLElement>(".tour__title")!;
+  const body = tour.querySelector<HTMLElement>(".tour__body")!;
+  const prev = tour.querySelector<HTMLButtonElement>("[data-tour=prev]")!;
+  const next = tour.querySelector<HTMLButtonElement>("[data-tour=next]")!;
+  const close = tour.querySelector<HTMLButtonElement>("[data-tour=close]")!;
+
+  type Step = { target: string; title: string; body: string };
+  const allSteps: Step[] = JSON.parse(tour.dataset["steps"] ?? "[]");
+  const margin = 8;
+  const gap = 12;
+
+  let steps: { step: Step; element: HTMLElement }[] = [];
+  let index = 0;
+
+  const place = () => {
+    const current = steps[index];
+    if (!current) return;
+    const rect = current.element.getBoundingClientRect();
+    // 画面端の要素でも枠が切れないように画面内に収める
+    const edge = 2;
+    const spotTop = Math.max(edge, rect.top - margin);
+    const spotLeft = Math.max(edge, rect.left - margin);
+    const spotRight = Math.min(window.innerWidth - edge, rect.right + margin);
+    const spotBottom = Math.min(
+      window.innerHeight - edge,
+      rect.bottom + margin,
+    );
+    spotlight.style.top = `${spotTop}px`;
+    spotlight.style.left = `${spotLeft}px`;
+    spotlight.style.width = `${spotRight - spotLeft}px`;
+    spotlight.style.height = `${spotBottom - spotTop}px`;
+
+    // 下に入らなければ上に出す。左右は画面内に収める
+    const bubbleRect = bubble.getBoundingClientRect();
+    const below = spotBottom + gap;
+    const top =
+      below + bubbleRect.height <= window.innerHeight
+        ? below
+        : Math.max(gap, spotTop - gap - bubbleRect.height);
+    const left = Math.min(
+      Math.max(gap, rect.left + rect.width / 2 - bubbleRect.width / 2),
+      window.innerWidth - bubbleRect.width - gap,
+    );
+    bubble.style.top = `${top}px`;
+    bubble.style.left = `${left}px`;
+  };
+
+  const show = (nextIndex: number) => {
+    const current = steps[nextIndex];
+    if (!current) return;
+    index = nextIndex;
+    progress.textContent = `${index + 1} / ${steps.length}`;
+    title.textContent = current.step.title;
+    body.textContent = current.step.body;
+    prev.hidden = index === 0;
+    next.textContent = index === steps.length - 1 ? "完了" : "次へ";
+    current.element.scrollIntoView({ block: "center", behavior: "instant" });
+    place();
+    next.focus();
+  };
+
+  const start = () => {
+    steps = allSteps.flatMap((step) => {
+      const element = document.querySelector<HTMLElement>(step.target);
+      return element && element.getClientRects().length > 0
+        ? [{ step, element }]
+        : [];
+    });
+    if (steps.length === 0) return;
+    document
+      .querySelectorAll<HTMLElement>("[popover]:popover-open")
+      .forEach((popover) => popover.hidePopover());
+    tour.showPopover();
+    show(0);
+  };
+
+  const end = () => tour.hidePopover();
+
+  prev.addEventListener("click", () => show(index - 1));
+  next.addEventListener("click", () =>
+    index === steps.length - 1 ? end() : show(index + 1),
+  );
+  close.addEventListener("click", end);
+  tour.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") end();
+    if (event.key === "ArrowRight" && index < steps.length - 1) show(index + 1);
+    if (event.key === "ArrowLeft" && index > 0) show(index - 1);
+  });
+  window.addEventListener("resize", place);
+  window.addEventListener("scroll", place, { passive: true });
+  document
+    .querySelectorAll("[data-tour-start]")
+    .forEach((button) => button.addEventListener("click", start));
+</script>
+
+<style>
+  .tour {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text);
+    overflow: hidden;
+  }
+
+  .tour__spotlight {
+    position: fixed;
+    border-radius: 10px;
+    box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.55);
+    outline: 2px solid var(--color-accent);
+    transition:
+      top 0.2s,
+      left 0.2s,
+      width 0.2s,
+      height 0.2s;
+    pointer-events: none;
+  }
+
+  .tour__bubble {
+    position: fixed;
+    width: min(20rem, calc(100vw - var(--gutter) * 2));
+    padding: var(--space-4);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    box-shadow: 0 8px 32px rgb(0 0 0 / 0.24);
+    transition:
+      top 0.2s,
+      left 0.2s;
+  }
+
+  .tour__progress {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+  }
+
+  .tour__title {
+    margin-top: var(--space-1);
+    font-size: 1rem;
+  }
+
+  .tour__body {
+    margin-top: var(--space-1);
+    font-size: 0.875rem;
+  }
+
+  .tour__actions {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: flex-end;
+    margin-top: var(--space-4);
+  }
+
+  .tour__button {
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .tour__button[hidden] {
+    display: none;
+  }
+
+  .tour__button--skip {
+    margin-right: auto;
+    border-color: transparent;
+    color: var(--color-text-muted);
+  }
+
+  .tour__button--primary {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: #fff;
+    font-weight: 700;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tour__spotlight,
+    .tour__bubble {
+      transition: none;
+    }
+  }
+</style>

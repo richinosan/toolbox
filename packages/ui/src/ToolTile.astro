@@ -53,9 +53,14 @@ const { tool } = Astro.props;
     min-width: 0;
   }
 
+  /* タイルの大きさに合わせて文字も縮める（ポップアップの小さいタイル用） */
   .tool-tile__name {
+    overflow: hidden;
     font-weight: 700;
-    font-size: 1.125rem;
+    font-size: clamp(0.8125rem, 10cqi, 1.125rem);
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .tool-tile__description {
@@ -65,7 +70,7 @@ const { tool } = Astro.props;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     color: var(--color-text-muted);
-    font-size: 0.8125rem;
+    font-size: clamp(0.6875rem, 7.5cqi, 0.8125rem);
     line-height: 1.5;
   }
 </style>
