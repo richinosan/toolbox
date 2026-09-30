@@ -1,0 +1,69 @@
+[tools]
+ni = "30.6.0"
+node = "26.10.0"
+pnpm = "12.8.1"
+
+# コマンドはすべて mise task に集約する（`mise tasks` で一覧）。
+# 依存はルートの package.json だけで管理し、CLI（astro, wrangler, tsc など）はルートの node_modules/.bin から使う。
+
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]
+
+[tasks.install]
+description = "依存パッケージをインストール（lockfile どおり）"
+run = "ni --frozen"
+
+[tasks.build]
+description = "全 app をビルド"
+run = '''
+for app in apps/*/; do
+  [ -f "$app/astro.config.mjs" ] || continue
+  astro build --root "$app"
+done
+'''
+
+[tasks.check]
+description = "型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
+run = '''
+for dir in apps/*/ packages/*/; do
+  [ -f "$dir/tsconfig.json" ] || continue
+  if find "$dir" -name "*.astro" -not -path "*/node_modules/*" | grep -q .; then
+    astro check --root "$dir"
+  else
+    tsc --noEmit -p "$dir"
+  fi
+done
+'''
+
+[tasks.lint]
+description = "oxlint + 型チェック"
+depends = ["check"]
+run = "oxlint"
+
+[tasks.format]
+description = "Prettier で整形"
+run = "prettier --write ."
+
+[tasks."format-check"]
+description = "Prettier の整形チェック"
+run = "prettier --check ."
+
+[tasks.tests]
+description = "lint・型チェック・整形チェックをまとめて実行"
+alias = "test"
+depends = ["lint", "format-check"]
+
+[tasks.dev]
+description = "app を開発サーバーで起動（例: mise run dev calendar）"
+usage = 'arg "<app>" help="apps/ 配下の app 名"'
+run = 'cd "apps/$usage_app" && astro dev'
+
+[tasks.preview]
+description = "ビルド済みの app を wrangler dev で起動（例: mise run preview calendar）"
+usage = 'arg "<app>" help="apps/ 配下の app 名"'
+run = 'cd "apps/$usage_app" && wrangler dev'
+
+[tasks.deploy]
+description = "app をビルドして Cloudflare にデプロイ（例: mise run deploy calendar）"
+usage = 'arg "<app>" help="apps/ 配下の app 名"'
+run = 'cd "apps/$usage_app" && astro build && wrangler deploy'

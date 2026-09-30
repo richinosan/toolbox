@@ -1,0 +1,96 @@
+:root {
+  --color-bg: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-text: #1b1f24;
+  --color-text-muted: #5b6470;
+  --color-border: #dfe3e8;
+  --color-accent: #06c755;
+  --color-accent-soft: #e6f9ee;
+  --color-focus: #1a73e8;
+
+  /* --font-line-seed-jp は Astro の Fonts API（#ui/fonts.mjs）が定義する */
+  --font-sans: var(--font-line-seed-jp, system-ui, sans-serif);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --radius: 12px;
+  --page-width: 960px;
+  --gutter: 16px;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #111418;
+    --color-surface: #1a1e24;
+    --color-text: #e8eaed;
+    --color-text-muted: #9aa3ae;
+    --color-border: #2c323a;
+    --color-accent: #2fd675;
+    --color-accent-soft: #14301f;
+    --color-focus: #8ab4f8;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.container {
+  width: 100%;
+  max-width: calc(var(--page-width) + var(--gutter) * 2);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: var(--space-6);
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: var(--space-4);
+  }
+}
