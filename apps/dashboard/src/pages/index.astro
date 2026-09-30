@@ -9,11 +9,18 @@ import ToolTile from "#ui/ToolTile.astro";
   description="小さな Web ツールの一覧"
   spec={{
     overview:
-      "ツール一覧をビルド時に生成した静的ページです。ブラウザでの処理はありません。",
+      "ツール一覧をビルド時に生成した静的ページです。ブラウザでの処理はチュートリアルの表示のみです。",
     network: "なし（ページ自体とフォントの読み込みのみ）",
     storage: "なし",
     libraries: [],
   }}
+  tour={[
+    {
+      target: ".tool-list li:first-child",
+      title: "ツールを開く",
+      body: "タイルを押すとそのツールを開きます。",
+    },
+  ]}
 >
   <h1 class="page-title">ツール一覧</h1>
   <ul class="tool-list">
@@ -33,7 +40,7 @@ import ToolTile from "#ui/ToolTile.astro";
 
   .tool-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr));
     gap: var(--space-4);
     margin: 0;
     padding: 0;

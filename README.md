@@ -20,7 +20,7 @@ packages/
 - 共通コードは npm パッケージにせず、ルート `package.json` の `imports`（`#ui/*`, `#shared`）で参照します。
 - フォント（LINE Seed JP）は Astro の Fonts API で配信します。各 app の `astro.config.mjs` で `fonts` に `#ui/fonts.mjs` の設定を渡します（woff2 のみ・必要なサブセットだけ読み込み）。
 - import は default import か namespace import（`import * as x from "..."`）のみ使います。named import は lint でエラーになります。
-- 各 app は自分の `astro.config.mjs` と `wrangler.jsonc`（Worker 名・route・assets）を持ち、単独でビルド・デプロイできます。
+- 各 app は自分の `astro.config.mjs` と `cloudflare.config.ts`（Worker 名・route・assets の扱い）を持ち、単独でビルド・デプロイできます。`wrangler.jsonc` は使いません。
 - 各 app は静的ビルドし、Worker の static assets として配信します。
   `/calendar` のようにサブパスを担当する app は `base` と `outDir: ./dist/<path>` を合わせ、URL パスと assets のパスを一致させています。
 - route はより具体的なパターンが優先されるため、`toolbox.richinosan.com/*` を dashboard、`/calendar` と `/calendar/*` を calendar が処理します。
@@ -44,5 +44,5 @@ mise run deploy <app> # app をビルドしてデプロイ
 
 ## ツールの追加
 
-1. `apps/<tool>/` を既存 app と同じ形で作成し、`base` / `outDir` / `wrangler.jsonc` の route を `/<tool>` に合わせる
+1. `apps/<tool>/` を既存 app と同じ形で作成し、`base` / `outDir` / `cloudflare.config.ts` の route を `/<tool>` に合わせる
 2. `packages/shared/src/tools.ts` にツール定義を追加する（アイコンは `packages/ui/src/icons/` に SVG コンポーネントを追加し、`packages/ui/src/ToolIcon.astro` に対応を追加）
