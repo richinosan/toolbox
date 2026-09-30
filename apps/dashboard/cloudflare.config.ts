@@ -1,4 +1,4 @@
-import * as cfConfig from "cf/config";
+import * as cfConfig from "@cloudflare/config";
 
 export default cfConfig.defineConfig({
   worker: {
