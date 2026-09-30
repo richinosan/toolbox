@@ -13,7 +13,8 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     overview:
       "入力された日付の解釈と曜日・Unix time の計算は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
     network: "なし（入力した日付がサーバーへ送信されることはありません）",
-    storage: "なし（localStorage・Cookie などには何も保存しません）",
+    storage:
+      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。入力した日付はどこにも保存しません（localStorage・Cookie は使いません）。",
     libraries: ["luxon（日付の解釈と計算）"],
   }}
   tour={[
@@ -150,112 +151,119 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   import * as luxon from "luxon";
   import * as date from "../lib/date";
 
-  const text = document.querySelector<HTMLInputElement>("#date-text")!;
-  const picker = document.querySelector<HTMLInputElement>("#date-picker")!;
-  const pickerButton = document.querySelector<HTMLButtonElement>(
-    "#date-picker-button",
-  )!;
-  const pickerLabel =
-    document.querySelector<HTMLElement>("#date-picker-label")!;
-  const note = document.querySelector<HTMLElement>("#date-note")!;
-  const weekday = document.querySelector<HTMLElement>("#weekday")!;
-  const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
-  const copyButton =
-    document.querySelector<HTMLButtonElement>("#copy-unix-time")!;
-  const copyTooltip = document.querySelector<HTMLElement>("#copy-tooltip")!;
+  // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
+  const init = () => {
+    const text = document.querySelector<HTMLInputElement>("#date-text");
+    // ClientRouter で他のページから遷移したときも初期化する（カレンダー以外のページでは何もしない）
+    if (!text) return;
+    const picker = document.querySelector<HTMLInputElement>("#date-picker")!;
+    const pickerButton = document.querySelector<HTMLButtonElement>(
+      "#date-picker-button",
+    )!;
+    const pickerLabel =
+      document.querySelector<HTMLElement>("#date-picker-label")!;
+    const note = document.querySelector<HTMLElement>("#date-note")!;
+    const weekday = document.querySelector<HTMLElement>("#weekday")!;
+    const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
+    const copyButton =
+      document.querySelector<HTMLButtonElement>("#copy-unix-time")!;
+    const copyTooltip = document.querySelector<HTMLElement>("#copy-tooltip")!;
 
-  // 日付の表記はブラウザではなくサービスの言語設定（<html lang>）に合わせる。ja なら yyyy/mm/dd
-  const dateFormat = new Intl.DateTimeFormat(document.documentElement.lang, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "UTC",
-  });
-  const datePlaceholder = dateFormat
-    .formatToParts(new Date(0))
-    .map((part) =>
-      part.type === "year"
-        ? "yyyy"
-        : part.type === "month"
-          ? "mm"
-          : part.type === "day"
-            ? "dd"
-            : part.value,
-    )
-    .join("");
-  const formatDate = (value: luxon.DateTime) => {
-    const utc = new Date(0);
-    // Date.UTC は 0〜99 年を 1900 年代にずらすので setUTCFullYear で組み立てる
-    utc.setUTCFullYear(value.year, value.month - 1, value.day);
-    // 年は 4 桁に揃える（Intl は 50 年を "50" と出すため）
-    return dateFormat
-      .formatToParts(utc)
+    // 日付の表記はブラウザではなくサービスの言語設定（<html lang>）に合わせる。ja なら yyyy/mm/dd
+    const dateFormat = new Intl.DateTimeFormat(document.documentElement.lang, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: "UTC",
+    });
+    const datePlaceholder = dateFormat
+      .formatToParts(new Date(0))
       .map((part) =>
-        part.type === "year" ? part.value.padStart(4, "0") : part.value,
+        part.type === "year"
+          ? "yyyy"
+          : part.type === "month"
+            ? "mm"
+            : part.type === "day"
+              ? "dd"
+              : part.value,
       )
       .join("");
-  };
+    const formatDate = (value: luxon.DateTime) => {
+      const utc = new Date(0);
+      // Date.UTC は 0〜99 年を 1900 年代にずらすので setUTCFullYear で組み立てる
+      utc.setUTCFullYear(value.year, value.month - 1, value.day);
+      // 年は 4 桁に揃える（Intl は 50 年を "50" と出すため）
+      return dateFormat
+        .formatToParts(utc)
+        .map((part) =>
+          part.type === "year" ? part.value.padStart(4, "0") : part.value,
+        )
+        .join("");
+    };
 
-  const hint = `日付のみの場合は ${date.TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
+    const hint = `日付のみの場合は ${date.TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
 
-  const render = () => {
-    const info = date.parseDate(text.value);
-    weekday.textContent = info?.weekday ?? "—";
-    unixTime.textContent = info ? String(info.unixTime) : "—";
-    copyButton.disabled = !info;
-    picker.value = info?.dateTime.toISODate() ?? "";
-    pickerLabel.textContent = info
-      ? formatDate(info.dateTime)
-      : datePlaceholder;
-    pickerLabel.classList.toggle("picker__label--empty", !info);
-    note.classList.toggle("note--error", !info && text.value.trim() !== "");
-    if (info) {
-      note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${date.TIME_ZONE_LABEL}）として計算しています。`;
-    } else {
-      note.textContent = text.value.trim()
-        ? "日付として解釈できません。"
-        : hint;
-    }
-  };
+    const render = () => {
+      const info = date.parseDate(text.value);
+      weekday.textContent = info?.weekday ?? "—";
+      unixTime.textContent = info ? String(info.unixTime) : "—";
+      copyButton.disabled = !info;
+      picker.value = info?.dateTime.toISODate() ?? "";
+      pickerLabel.textContent = info
+        ? formatDate(info.dateTime)
+        : datePlaceholder;
+      pickerLabel.classList.toggle("picker__label--empty", !info);
+      note.classList.toggle("note--error", !info && text.value.trim() !== "");
+      if (info) {
+        note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${date.TIME_ZONE_LABEL}）として計算しています。`;
+      } else {
+        note.textContent = text.value.trim()
+          ? "日付として解釈できません。"
+          : hint;
+      }
+    };
 
-  text.addEventListener("input", render);
-  let tooltipTimer: ReturnType<typeof setTimeout> | undefined;
-  const showTooltip = (message: string) => {
-    copyTooltip.textContent = message;
-    copyTooltip.classList.add("copy__tooltip--visible");
-    clearTimeout(tooltipTimer);
-    tooltipTimer = setTimeout(() => {
-      copyTooltip.classList.remove("copy__tooltip--visible");
-    }, 1500);
-  };
+    text.addEventListener("input", render);
+    let tooltipTimer: ReturnType<typeof setTimeout> | undefined;
+    const showTooltip = (message: string) => {
+      copyTooltip.textContent = message;
+      copyTooltip.classList.add("copy__tooltip--visible");
+      clearTimeout(tooltipTimer);
+      tooltipTimer = setTimeout(() => {
+        copyTooltip.classList.remove("copy__tooltip--visible");
+      }, 1500);
+    };
 
-  copyButton.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(unixTime.textContent ?? "");
-      showTooltip("コピーしました");
-    } catch {
-      // クリップボードが使えない環境では値を選択状態にして手動コピーに任せる
-      getSelection()?.selectAllChildren(unixTime);
-      showTooltip("選択しました");
-    }
-  });
+    copyButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(unixTime.textContent ?? "");
+        showTooltip("コピーしました");
+      } catch {
+        // クリップボードが使えない環境では値を選択状態にして手動コピーに任せる
+        getSelection()?.selectAllChildren(unixTime);
+        showTooltip("選択しました");
+      }
+    });
 
-  pickerButton.addEventListener("click", () => {
-    try {
-      picker.showPicker();
-    } catch {
-      // showPicker() に未対応のブラウザではネイティブ input をクリックして開く
-      picker.click();
-    }
-  });
-  picker.addEventListener("input", () => {
-    text.value = picker.value;
+    pickerButton.addEventListener("click", () => {
+      try {
+        picker.showPicker();
+      } catch {
+        // showPicker() に未対応のブラウザではネイティブ input をクリックして開く
+        picker.click();
+      }
+    });
+    picker.addEventListener("input", () => {
+      text.value = picker.value;
+      render();
+    });
+
+    if (!text.value)
+      text.value =
+        luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate() ?? "";
     render();
-  });
-
-  if (!text.value)
-    text.value = luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate() ?? "";
-  render();
+  };
+  document.addEventListener("astro:page-load", init);
 </script>
 
 <style>
