@@ -43,6 +43,8 @@ const { steps } = Astro.props;
 </div>
 
 <script>
+  import * as motion from "./motion";
+
   type Step = { target: string; title: string; body: string };
 
   const margin = 8;
@@ -110,6 +112,8 @@ const { steps } = Astro.props;
     next.textContent = index === steps.length - 1 ? "完了" : "次へ";
     current.element.scrollIntoView({ block: "center", behavior: "instant" });
     place();
+    // ステップが変わるたびに吹き出しを跳ねさせる
+    motion.bounce(part(".tour__bubble"), "in");
     next.focus();
   };
 
