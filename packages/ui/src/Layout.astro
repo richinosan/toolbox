@@ -1,8 +1,11 @@
 ---
 import * as assets from "astro:assets";
+import * as shared from "#shared";
 import GitHubIcon from "./icons/GitHubIcon.astro";
+import GridIcon from "./icons/GridIcon.astro";
 import HelpIcon from "./icons/HelpIcon.astro";
 import type * as specTypes from "./spec";
+import ToolIcon from "./ToolIcon.astro";
 import "./styles/global.css";
 
 interface Props {
@@ -30,6 +33,15 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
   <body>
     <header class="site-header">
       <div class="container site-header__inner">
+        <button
+          class="icon-button"
+          type="button"
+          popovertarget="tools-popover"
+          aria-label="ツール一覧"
+          title="ツール一覧"
+        >
+          <GridIcon />
+        </button>
         <a class="site-header__brand" href="/">
           {siteName}
         </a>
@@ -56,6 +68,49 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
         </div>
       </div>
     </header>
+
+    <div
+      id="tools-popover"
+      class="popover popover--tools"
+      popover
+      aria-labelledby="tools-title"
+    >
+      <div class="popover__header">
+        <h2 id="tools-title" class="popover__title">
+          ツール一覧
+        </h2>
+        <button
+          class="icon-button"
+          type="button"
+          popovertarget="tools-popover"
+          popovertargetaction="hide"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+      </div>
+      <ul class="tools-menu">
+        {shared.tools.map((tool) => (
+          <li>
+            <a class="tools-menu__item" href={tool.href}>
+              <ToolIcon name={tool.icon} />
+              <span class="tools-menu__body">
+                <span class="tools-menu__name">{tool.name}</span>
+                <span class="tools-menu__description">{tool.description}</span>
+                <ul class="tools-menu__features">
+                  {tool.features.map((feature) => (
+                    <li>{feature}</li>
+                  ))}
+                </ul>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+      <a class="tools-menu__all" href="/">
+        すべてのツールを見る
+      </a>
+    </div>
 
     <div id="spec-popover" class="popover" popover aria-labelledby="spec-title">
       <div class="popover__header">
@@ -114,6 +169,7 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
   }
 
   .site-header__brand {
+    margin-left: var(--space-2);
     font-weight: 700;
     font-size: 1.125rem;
     text-decoration: none;
@@ -174,6 +230,66 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 
   .popover__title {
     font-size: 1.125rem;
+  }
+
+  /* ツール一覧はグリッドボタンの近く（左上）に出す */
+  .popover--tools {
+    inset: 3.5rem auto auto
+      max(var(--gutter), calc((100vw - var(--page-width)) / 2));
+    margin: 0;
+    width: min(24rem, calc(100vw - var(--gutter) * 2));
+  }
+
+  .popover--tools::backdrop {
+    background: transparent;
+  }
+
+  .tools-menu {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .tools-menu__item {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    padding: var(--space-2);
+    border-radius: 8px;
+    text-decoration: none;
+  }
+
+  .tools-menu__item:hover {
+    background: var(--color-bg);
+  }
+
+  .tools-menu__body {
+    display: grid;
+    min-width: 0;
+  }
+
+  .tools-menu__name {
+    font-weight: 700;
+  }
+
+  .tools-menu__description,
+  .tools-menu__features {
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .tools-menu__features {
+    margin: var(--space-1) 0 0;
+    padding-left: 1.25em;
+  }
+
+  .tools-menu__all {
+    display: block;
+    margin-top: var(--space-3);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
   }
 
   .spec {
