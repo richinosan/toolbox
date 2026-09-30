@@ -1,12 +1,22 @@
 ---
-import { tools } from "#shared";
+import * as shared from "#shared";
 import Layout from "#ui/Layout.astro";
 import ToolIcon from "#ui/ToolIcon.astro";
 
-const tool = tools.find((t) => t.id === "calendar")!;
+const tool = shared.tools.find((t) => t.id === "calendar")!;
 ---
 
-<Layout title={tool.name} description={tool.description}>
+<Layout
+  title={tool.name}
+  description={tool.description}
+  spec={{
+    overview:
+      "入力された日付の解釈と曜日・Unix time の計算は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は Asia/Tokyo (UTC+09:00) の 00:00:00 として扱います。",
+    network: "なし（入力した日付がサーバーへ送信されることはありません）",
+    storage: "なし（localStorage・Cookie などには何も保存しません）",
+    libraries: ["luxon（日付の解釈と計算）"],
+  }}
+>
   <a class="back-link" href="/">
     ← ツール一覧へ戻る
   </a>
@@ -18,6 +28,12 @@ const tool = tools.find((t) => t.id === "calendar")!;
       <p class="tool-header__description">{tool.description}</p>
     </div>
   </div>
+
+  <ul class="features">
+    {tool.features.map((feature) => (
+      <li>{feature}</li>
+    ))}
+  </ul>
 
   <section class="card calendar">
     <div class="field">
@@ -62,8 +78,8 @@ const tool = tools.find((t) => t.id === "calendar")!;
 </Layout>
 
 <script>
-  import { DateTime } from "luxon";
-  import { parseDate, TIME_ZONE, TIME_ZONE_LABEL } from "../lib/date";
+  import * as luxon from "luxon";
+  import * as date from "../lib/date";
 
   const text = document.querySelector<HTMLInputElement>("#date-text")!;
   const picker = document.querySelector<HTMLInputElement>("#date-picker")!;
@@ -71,16 +87,16 @@ const tool = tools.find((t) => t.id === "calendar")!;
   const weekday = document.querySelector<HTMLElement>("#weekday")!;
   const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
 
-  const hint = `日付のみの場合は ${TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
+  const hint = `日付のみの場合は ${date.TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
 
   const render = () => {
-    const info = parseDate(text.value);
+    const info = date.parseDate(text.value);
     weekday.textContent = info?.weekday ?? "—";
     unixTime.textContent = info ? String(info.unixTime) : "—";
     picker.value = info?.dateTime.toISODate() ?? "";
     note.classList.toggle("note--error", !info && text.value.trim() !== "");
     if (info) {
-      note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${TIME_ZONE_LABEL}）として計算しています。`;
+      note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${date.TIME_ZONE_LABEL}）として計算しています。`;
     } else {
       note.textContent = text.value.trim()
         ? "日付として解釈できません。"
@@ -95,7 +111,7 @@ const tool = tools.find((t) => t.id === "calendar")!;
   });
 
   if (!text.value)
-    text.value = DateTime.now().setZone(TIME_ZONE).toISODate() ?? "";
+    text.value = luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate() ?? "";
   render();
 </script>
 
@@ -126,6 +142,13 @@ const tool = tools.find((t) => t.id === "calendar")!;
   }
 
   .tool-header__description {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .features {
+    margin: calc(var(--space-2) * -1) 0 var(--space-6);
+    padding-left: 1.25em;
     color: var(--color-text-muted);
     font-size: 0.875rem;
   }

@@ -1,11 +1,11 @@
-import { DateTime } from "luxon";
+import * as luxon from "luxon";
 
 /** 日付のみの入力は常にこのタイムゾーンの 00:00:00 として解釈する。 */
 export const TIME_ZONE = "Asia/Tokyo";
 export const TIME_ZONE_LABEL = "Asia/Tokyo (UTC+09:00)";
 
 export type DateInfo = {
-  dateTime: DateTime;
+  dateTime: luxon.DateTime;
   weekday: string;
   unixTime: number;
 };
@@ -20,7 +20,7 @@ export type DateInfo = {
  */
 export function parseDate(
   input: string,
-  now = DateTime.now(),
+  now = luxon.DateTime.now(),
 ): DateInfo | null {
   const text = input.normalize("NFKC").trim();
   if (!text) return null;
@@ -36,12 +36,12 @@ export function parseDate(
   };
 }
 
-function parseText(text: string, now: DateTime): DateTime | null {
+function parseText(text: string, now: luxon.DateTime): luxon.DateTime | null {
   const opts = { zone: TIME_ZONE };
 
   let match = /^(?:(\d{4})年)?(?:(\d{1,2})月)?(\d{1,2})日$/.exec(text);
   if (match) {
-    return DateTime.fromObject(
+    return luxon.DateTime.fromObject(
       {
         year: match[1] ? Number(match[1]) : now.year,
         month: match[2] ? Number(match[2]) : now.month,
@@ -56,9 +56,13 @@ function parseText(text: string, now: DateTime): DateTime | null {
   if (match && (!match[2] || match[2] === match[4])) {
     const [, year, , month, , day] = match;
     if (year?.length === 2) {
-      return DateTime.fromFormat(`${year}-${month}-${day}`, "yy-M-d", opts);
+      return luxon.DateTime.fromFormat(
+        `${year}-${month}-${day}`,
+        "yy-M-d",
+        opts,
+      );
     }
-    return DateTime.fromObject(
+    return luxon.DateTime.fromObject(
       {
         year: year ? Number(year) : now.year,
         month: Number(month),
@@ -68,10 +72,12 @@ function parseText(text: string, now: DateTime): DateTime | null {
     );
   }
 
-  if (/^\d{8}$/.test(text)) return DateTime.fromFormat(text, "yyyyMMdd", opts);
-  if (/^\d{6}$/.test(text)) return DateTime.fromFormat(text, "yyMMdd", opts);
+  if (/^\d{8}$/.test(text))
+    return luxon.DateTime.fromFormat(text, "yyyyMMdd", opts);
+  if (/^\d{6}$/.test(text))
+    return luxon.DateTime.fromFormat(text, "yyMMdd", opts);
 
   // 時刻やオフセットを含む ISO 8601 はその瞬間として扱い、表示は Asia/Tokyo に揃える
-  const iso = DateTime.fromISO(text, opts);
+  const iso = luxon.DateTime.fromISO(text, opts);
   return iso.isValid ? iso.setZone(TIME_ZONE) : null;
 }
