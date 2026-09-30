@@ -1,0 +1,33 @@
+---
+import { CalendarDays } from "@lucide/astro";
+import type { ToolIconName } from "@toolbox/shared";
+
+interface Props {
+  name: ToolIconName;
+  size?: number;
+}
+
+const icons = {
+  calendar: CalendarDays,
+} satisfies Record<ToolIconName, unknown>;
+
+const { name, size = 24 } = Astro.props;
+const Icon = icons[name];
+---
+
+<span class="tool-icon" aria-hidden="true">
+  <Icon size={size} />
+</span>
+
+<style>
+  .tool-icon {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 10px;
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+  }
+</style>

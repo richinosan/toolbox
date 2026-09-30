@@ -1,0 +1,70 @@
+---
+import { tools } from "@toolbox/shared";
+import Layout from "@toolbox/ui/Layout.astro";
+import ToolIcon from "@toolbox/ui/ToolIcon.astro";
+---
+
+<Layout title="Toolbox" description="小さな Web ツールの一覧">
+  <h1 class="page-title">ツール一覧</h1>
+  <ul class="tool-list">
+    {tools.map((tool) => (
+      <li>
+        <a class="card tool-card" href={tool.href}>
+          <ToolIcon name={tool.icon} />
+          <span class="tool-card__body">
+            <span class="tool-card__name">{tool.name}</span>
+            <span class="tool-card__description">{tool.description}</span>
+          </span>
+        </a>
+      </li>
+    ))}
+  </ul>
+</Layout>
+
+<style>
+  .page-title {
+    font-size: 1.5rem;
+    margin-bottom: var(--space-6);
+  }
+
+  .tool-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .tool-card {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+    height: 100%;
+    text-decoration: none;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+
+  .tool-card:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
+  }
+
+  .tool-card__body {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .tool-card__name {
+    font-weight: 700;
+    font-size: 1.125rem;
+  }
+
+  .tool-card__description {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+</style>
