@@ -10,7 +10,9 @@ import ToolIcon from "@toolbox/ui/ToolIcon.astro";
     {tools.map((tool) => (
       <li>
         <a class="card tool-card" href={tool.href}>
-          <ToolIcon name={tool.icon} />
+          <span class="tool-card__icon">
+            <ToolIcon name={tool.icon} />
+          </span>
           <span class="tool-card__body">
             <span class="tool-card__name">{tool.name}</span>
             <span class="tool-card__description">{tool.description}</span>
@@ -39,9 +41,9 @@ import ToolIcon from "@toolbox/ui/ToolIcon.astro";
   .tool-card {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: var(--space-3);
+    gap: var(--space-2);
     aspect-ratio: 1;
+    container-type: inline-size;
     overflow: hidden;
     padding: var(--space-4);
     text-decoration: none;
@@ -55,8 +57,16 @@ import ToolIcon from "@toolbox/ui/ToolIcon.astro";
     box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
   }
 
+  .tool-card__icon {
+    display: grid;
+    flex: 1;
+    place-items: center;
+    --tool-icon-size: 40cqi;
+  }
+
   .tool-card__body {
     display: grid;
+    text-align: center;
     gap: var(--space-1);
     min-width: 0;
   }
@@ -70,8 +80,8 @@ import ToolIcon from "@toolbox/ui/ToolIcon.astro";
     display: -webkit-box;
     overflow: hidden;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     color: var(--color-text-muted);
     font-size: 0.8125rem;
     line-height: 1.5;
