@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from "astro/config";
+import { fonts } from "#ui/fonts.mjs";
 
 // /calendar 配下を担当する Worker。
 // Worker は URL パスそのままで assets を引くため、出力も dist/calendar/ に置き
@@ -9,4 +10,5 @@ export default defineConfig({
   base: "/calendar",
   outDir: "./dist/calendar",
   trailingSlash: "never",
+  fonts,
 });
