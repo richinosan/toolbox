@@ -1,0 +1,71 @@
+---
+import type * as shared from "#shared";
+import ToolIcon from "./ToolIcon.astro";
+
+interface Props {
+  tool: shared.ToolDefinition;
+}
+
+const { tool } = Astro.props;
+---
+
+<a class="card tool-tile" href={tool.href}>
+  <span class="tool-tile__icon">
+    <ToolIcon name={tool.icon} />
+  </span>
+  <span class="tool-tile__body">
+    <span class="tool-tile__name">{tool.name}</span>
+    <span class="tool-tile__description">{tool.description}</span>
+  </span>
+</a>
+
+<style>
+  .tool-tile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    aspect-ratio: 1;
+    container-type: inline-size;
+    overflow: hidden;
+    padding: var(--space-3);
+    text-decoration: none;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+
+  .tool-tile:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
+  }
+
+  .tool-tile__icon {
+    display: grid;
+    flex: 1;
+    place-items: center;
+    --tool-icon-size: 40cqi;
+  }
+
+  .tool-tile__body {
+    display: grid;
+    text-align: center;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .tool-tile__name {
+    font-weight: 700;
+    font-size: 1.125rem;
+  }
+
+  .tool-tile__description {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+</style>
