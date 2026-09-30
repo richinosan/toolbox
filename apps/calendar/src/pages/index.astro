@@ -11,7 +11,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   description={tool.description}
   spec={{
     overview:
-      "入力された日付の解釈と曜日・Unix time の計算は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は Asia/Tokyo (UTC+09:00) の 00:00:00 として扱います。",
+      "入力された日付の解釈と曜日・Unix time の計算は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
     network: "なし（入力した日付がサーバーへ送信されることはありません）",
     storage: "なし（localStorage・Cookie などには何も保存しません）",
     libraries: ["luxon（日付の解釈と計算）"],
@@ -54,8 +54,6 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
           id="date-picker"
           class="field__input field__input--picker"
           type="date"
-          min="1000-01-01"
-          max="9999-12-31"
           aria-label="カレンダーから選択"
         />
       </div>

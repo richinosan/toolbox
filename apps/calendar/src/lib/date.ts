@@ -1,8 +1,11 @@
 import * as luxon from "luxon";
 
-/** 日付のみの入力は常にこのタイムゾーンの 00:00:00 として解釈する。 */
-export const TIME_ZONE = "Asia/Tokyo";
-export const TIME_ZONE_LABEL = "Asia/Tokyo (UTC+09:00)";
+/**
+ * 日付のみの入力は常にこのタイムゾーンの 00:00:00 として解釈する。
+ * Asia/Tokyo は 1888 年以前が地方平均時（UTC+09:18:59）になるため、固定オフセットの UTC+9 を使う。
+ */
+export const TIME_ZONE = "UTC+9";
+export const TIME_ZONE_LABEL = "JST (UTC+09:00)";
 
 export type DateInfo = {
   dateTime: luxon.DateTime;
@@ -15,7 +18,7 @@ export type DateInfo = {
  * - ISO 8601（例: 2026-10-01, 2026-10-01T12:00:00Z）
  * - 年月日（例: 2026年10月1日, 10月1日, 1日。年・月を省略すると今の年・月）
  * - 区切り（/ ／ -）: 2026/10/1, 26/10/1, 10/1（年を省略すると今の年）
- * - 8 桁: 20261001, 6 桁: 261001（2 桁の年は luxon の規則で 00〜59 → 20xx, 60〜99 → 19xx）
+ * - 8 桁: 20261001, 6 桁: 261001（2 桁の年は 00〜59 → 20xx, 60〜99 → 19xx）
  * 全角数字・全角記号は半角として扱う。解釈できなければ null。
  */
 export function parseDate(
@@ -55,16 +58,9 @@ function parseText(text: string, now: luxon.DateTime): luxon.DateTime | null {
   // 区切り文字は揃っている必要がある（2026/10-01 は不可）
   if (match && (!match[2] || match[2] === match[4])) {
     const [, year, , month, , day] = match;
-    if (year?.length === 2) {
-      return luxon.DateTime.fromFormat(
-        `${year}-${month}-${day}`,
-        "yy-M-d",
-        opts,
-      );
-    }
     return luxon.DateTime.fromObject(
       {
-        year: year ? Number(year) : now.year,
+        year: year ? toFullYear(year) : now.year,
         month: Number(month),
         day: Number(day),
       },
@@ -74,10 +70,23 @@ function parseText(text: string, now: luxon.DateTime): luxon.DateTime | null {
 
   if (/^\d{8}$/.test(text))
     return luxon.DateTime.fromFormat(text, "yyyyMMdd", opts);
-  if (/^\d{6}$/.test(text))
-    return luxon.DateTime.fromFormat(text, "yyMMdd", opts);
+  match = /^(\d{2})(\d{2})(\d{2})$/.exec(text);
+  if (match) {
+    const [, year = "", month, day] = match;
+    return luxon.DateTime.fromObject(
+      { year: toFullYear(year), month: Number(month), day: Number(day) },
+      opts,
+    );
+  }
 
-  // 時刻やオフセットを含む ISO 8601 はその瞬間として扱い、表示は Asia/Tokyo に揃える
+  // 時刻やオフセットを含む ISO 8601 はその瞬間として扱い、表示は JST (UTC+9) に揃える
   const iso = luxon.DateTime.fromISO(text, opts);
   return iso.isValid ? iso.setZone(TIME_ZONE) : null;
+}
+
+/** 2 桁の年は 00〜59 → 2000 年代、60〜99 → 1900 年代とする（4 桁ならそのまま）。 */
+function toFullYear(year: string): number {
+  const value = Number(year);
+  if (year.length !== 2) return value;
+  return value < 60 ? 2000 + value : 1900 + value;
 }
