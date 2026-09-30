@@ -23,13 +23,16 @@ packages/
 
 ## コマンド
 
-```sh
-pnpm install
-pnpm build          # 全 app をビルド
-pnpm check          # 型チェック（astro check / tsc）
-pnpm lint           # oxlint + 型チェック
-pnpm format:check   # Prettier
+node / pnpm / ni は [mise](https://mise.jdx.dev/) で管理し、コマンドはすべて mise task に集約しています（`mise tasks` で一覧）。
 
-pnpm --filter @toolbox/dashboard dev      # 単体で開発
-pnpm --filter @toolbox/dashboard deploy   # 単体でビルド + デプロイ
+```sh
+mise install          # node / pnpm / ni を入れる
+mise run install      # 依存パッケージをインストール
+mise run build        # 全 app をビルド
+mise run check        # 型チェック（astro check / tsc）
+mise run lint         # oxlint + 型チェック
+mise run format       # Prettier で整形
+mise run tests        # lint + 整形チェック
+mise run dev <app>    # app を開発サーバーで起動
+mise run deploy <app> # app をビルドしてデプロイ
 ```

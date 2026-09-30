@@ -7,9 +7,6 @@
     "./Layout.astro": "./src/Layout.astro",
     "./ToolIcon.astro": "./src/ToolIcon.astro"
   },
-  "scripts": {
-    "check": "astro check"
-  },
   "dependencies": {
     "@fontsource/line-seed-jp": "catalog:",
     "@lucide/astro": "catalog:",
