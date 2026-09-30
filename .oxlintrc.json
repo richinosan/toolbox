@@ -15,5 +15,10 @@
     ],
     "toolbox/no-named-import": "error"
   },
-  "ignorePatterns": ["**/dist/**", "**/.astro/**", "**/.wrangler/**"]
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.astro/**",
+    "**/.wrangler/**",
+    "**/.cloudflare/**"
+  ]
 }
