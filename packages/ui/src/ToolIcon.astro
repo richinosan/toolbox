@@ -1,14 +1,14 @@
 ---
-import type { ToolIconName } from "#shared";
+import type * as shared from "#shared";
 import CalendarIcon from "./icons/CalendarIcon.astro";
 
 interface Props {
-  name: ToolIconName;
+  name: shared.ToolIconName;
 }
 
 const icons = {
   calendar: CalendarIcon,
-} satisfies Record<ToolIconName, unknown>;
+} satisfies Record<shared.ToolIconName, unknown>;
 
 const { name } = Astro.props;
 const Icon = icons[name];

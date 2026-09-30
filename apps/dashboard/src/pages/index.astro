@@ -1,13 +1,23 @@
 ---
-import { tools } from "#shared";
+import * as shared from "#shared";
 import Layout from "#ui/Layout.astro";
 import ToolIcon from "#ui/ToolIcon.astro";
 ---
 
-<Layout title="Toolbox" description="小さな Web ツールの一覧">
+<Layout
+  title="Toolbox"
+  description="小さな Web ツールの一覧"
+  spec={{
+    overview:
+      "ツール一覧をビルド時に生成した静的ページです。ブラウザでの処理はありません。",
+    network: "なし（ページ自体とフォントの読み込みのみ）",
+    storage: "なし",
+    libraries: [],
+  }}
+>
   <h1 class="page-title">ツール一覧</h1>
   <ul class="tool-list">
-    {tools.map((tool) => (
+    {shared.tools.map((tool) => (
       <li>
         <a class="card tool-card" href={tool.href}>
           <span class="tool-card__icon">
