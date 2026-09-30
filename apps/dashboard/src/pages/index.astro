@@ -9,9 +9,10 @@ import ToolTile from "#ui/ToolTile.astro";
   description="小さな Web ツールの一覧"
   spec={{
     overview:
-      "ツール一覧をビルド時に生成した静的ページです。ブラウザでの処理はチュートリアルの表示のみです。",
+      "ツール一覧をビルド時に生成した静的ページです。ブラウザでの処理は、ページ遷移（ヘッダーとフッターを残したまま中身だけ切り替え）、チュートリアルの表示、オフライン用の Service Worker だけです。",
     network: "なし（ページ自体とフォントの読み込みのみ）",
-    storage: "なし",
+    storage:
+      "オフラインでも開けるよう、ページ・スクリプト・フォント・アイコンをブラウザのキャッシュ（Cache Storage）に保存します。localStorage・Cookie は使いません。",
     libraries: [],
   }}
   tour={[
