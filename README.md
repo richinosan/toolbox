@@ -20,7 +20,8 @@ packages/
 - 共通コードは npm パッケージにせず、ルート `package.json` の `imports`（`#ui/*`, `#shared`）で参照します。
 - フォント（LINE Seed JP）は Astro の Fonts API で配信します。各 app の `astro.config.mjs` で `fonts` に `#ui/fonts.mjs` の設定を渡します（woff2 のみ・必要なサブセットだけ読み込み）。
 - import は default import か namespace import（`import * as x from "..."`）のみ使います。named import は lint でエラーになります。
-- 各 app は自分の `astro.config.mjs` と `cloudflare.config.ts`（Worker 名・route・assets の扱い）を持ち、単独でビルド・デプロイできます。`wrangler.jsonc` は使いません。
+- 各 app は自分の `astro.config.mjs` と `cloudflare.config.ts`（Worker 名・route・assets の扱い）を持ち、単独でビルド・デプロイできます。
+- Cloudflare の操作は [cf CLI](https://blog.cloudflare.com/cloudflare-cf-cli-launch) で行い、wrangler（`wrangler.jsonc` を含む）は使いません。各 app の `astro.config.mjs` で `#ui/cloudflare.mjs` の integration を読み込み、ビルド時に cf が読む Build Output を書き出します。
 - 各 app は静的ビルドし、Worker の static assets として配信します。
   `/calendar` のようにサブパスを担当する app は `base` と `outDir: ./dist/<path>` を合わせ、URL パスと assets のパスを一致させています。
 - route はより具体的なパターンが優先されるため、`toolbox.richinosan.com/*` を dashboard、`/calendar` と `/calendar/*` を calendar が処理します。
