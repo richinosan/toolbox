@@ -1,5 +1,6 @@
 ---
 import * as assets from "astro:assets";
+import * as transitions from "astro:transitions";
 import * as shared from "#shared";
 import GitHubIcon from "./icons/GitHubIcon.astro";
 import GridIcon from "./icons/GridIcon.astro";
@@ -50,9 +51,25 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     <title>{pageTitle}</title>
     <assets.Font cssVariable="--font-line-seed-jp" />
     {description && <meta name="description" content={description} />}
+    <!-- PWA: manifest / アイコン / Service Worker はサイトのルート（dashboard の Worker）が配信する -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#1a1e24"
+      media="(prefers-color-scheme: dark)"
+    />
+    <transitions.ClientRouter />
   </head>
   <body>
-    <header class="site-header">
+    <!-- ヘッダーとフッターは ClientRouter のページ遷移でも入れ替えずに残す -->
+    <header class="site-header" transition:persist="site-header">
       <div class="container site-header__inner">
         <button
           id="tools-button"
@@ -164,8 +181,25 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     <main class="container site-main">
       <slot />
     </main>
+    <footer class="site-footer" transition:persist="site-footer">
+      <div class="container site-footer__inner">
+        <a href="/">{siteName}</a>
+        <a href={repositoryUrl} target="_blank" rel="noopener noreferrer">
+          GitHub
+        </a>
+      </div>
+    </footer>
   </body>
 </html>
+
+<script>
+  // オフラインでも開けるように Service Worker を登録する（本番ビルドのみ）
+  if (import.meta.env.PROD && "serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // 登録できなくてもページはそのまま使える
+    });
+  }
+</script>
 
 <style>
   .site-header {
@@ -193,7 +227,30 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
   }
 
   .site-main {
+    flex: 1;
+    width: 100%;
     padding-block: var(--space-8);
+  }
+
+  .site-footer {
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .site-footer__inner {
+    display: flex;
+    gap: var(--space-4);
+    padding-block: var(--space-4);
+  }
+
+  .site-footer a {
+    text-decoration: none;
+  }
+
+  .site-footer a:hover {
+    color: var(--color-text);
+    text-decoration: underline;
   }
 
   .icon-button {
