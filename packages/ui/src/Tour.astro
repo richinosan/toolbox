@@ -43,27 +43,23 @@ const { steps } = Astro.props;
 </div>
 
 <script>
-  const tour = document.querySelector<HTMLElement>("#tour")!;
-  const spotlight = tour.querySelector<HTMLElement>(".tour__spotlight")!;
-  const bubble = tour.querySelector<HTMLElement>(".tour__bubble")!;
-  const progress = tour.querySelector<HTMLElement>(".tour__progress")!;
-  const title = tour.querySelector<HTMLElement>(".tour__title")!;
-  const body = tour.querySelector<HTMLElement>(".tour__body")!;
-  const prev = tour.querySelector<HTMLButtonElement>("[data-tour=prev]")!;
-  const next = tour.querySelector<HTMLButtonElement>("[data-tour=next]")!;
-  const close = tour.querySelector<HTMLButtonElement>("[data-tour=close]")!;
-
   type Step = { target: string; title: string; body: string };
-  const allSteps: Step[] = JSON.parse(tour.dataset["steps"] ?? "[]");
+
   const margin = 8;
   const gap = 12;
 
+  let tour: HTMLElement | null = null;
   let steps: { step: Step; element: HTMLElement }[] = [];
   let index = 0;
 
+  const part = <T extends HTMLElement>(selector: string) =>
+    tour!.querySelector<T>(selector)!;
+
   const place = () => {
     const current = steps[index];
-    if (!current) return;
+    if (!tour?.matches(":popover-open") || !current) return;
+    const spotlight = part(".tour__spotlight");
+    const bubble = part(".tour__bubble");
     const rect = current.element.getBoundingClientRect();
     // 画面端の要素でも枠が切れないように画面内に収める
     const edge = 2;
@@ -82,26 +78,35 @@ const { steps } = Astro.props;
     // 下に入らなければ上に出す。左右は画面内に収める
     const bubbleRect = bubble.getBoundingClientRect();
     const below = spotBottom + gap;
-    const top =
-      below + bubbleRect.height <= window.innerHeight
-        ? below
-        : Math.max(gap, spotTop - gap - bubbleRect.height);
+    const fitsBelow = below + bubbleRect.height <= window.innerHeight;
+    const top = fitsBelow
+      ? below
+      : Math.max(gap, spotTop - gap - bubbleRect.height);
+    const targetCenter = rect.left + rect.width / 2;
     const left = Math.min(
-      Math.max(gap, rect.left + rect.width / 2 - bubbleRect.width / 2),
+      Math.max(gap, targetCenter - bubbleRect.width / 2),
       window.innerWidth - bubbleRect.width - gap,
     );
     bubble.style.top = `${top}px`;
     bubble.style.left = `${left}px`;
+    // 吹き出しのしっぽを対象の中央に向ける（角丸にかからない範囲に収める）
+    const tail = Math.min(
+      Math.max(20, targetCenter - left),
+      bubbleRect.width - 20,
+    );
+    bubble.style.setProperty("--tail-x", `${tail}px`);
+    bubble.dataset["side"] = fitsBelow ? "below" : "above";
   };
 
   const show = (nextIndex: number) => {
     const current = steps[nextIndex];
     if (!current) return;
     index = nextIndex;
-    progress.textContent = `${index + 1} / ${steps.length}`;
-    title.textContent = current.step.title;
-    body.textContent = current.step.body;
-    prev.hidden = index === 0;
+    part(".tour__progress").textContent = `${index + 1} / ${steps.length}`;
+    part(".tour__title").textContent = current.step.title;
+    part(".tour__body").textContent = current.step.body;
+    part<HTMLButtonElement>("[data-tour=prev]").hidden = index === 0;
+    const next = part<HTMLButtonElement>("[data-tour=next]");
     next.textContent = index === steps.length - 1 ? "完了" : "次へ";
     current.element.scrollIntoView({ block: "center", behavior: "instant" });
     place();
@@ -109,6 +114,8 @@ const { steps } = Astro.props;
   };
 
   const start = () => {
+    if (!tour) return;
+    const allSteps: Step[] = JSON.parse(tour.dataset["steps"] ?? "[]");
     steps = allSteps.flatMap((step) => {
       const element = document.querySelector<HTMLElement>(step.target);
       return element && element.getClientRects().length > 0
@@ -123,23 +130,31 @@ const { steps } = Astro.props;
     show(0);
   };
 
-  const end = () => tour.hidePopover();
+  const end = () => tour?.hidePopover();
 
-  prev.addEventListener("click", () => show(index - 1));
-  next.addEventListener("click", () =>
-    index === steps.length - 1 ? end() : show(index + 1),
-  );
-  close.addEventListener("click", end);
-  tour.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") end();
-    if (event.key === "ArrowRight" && index < steps.length - 1) show(index + 1);
-    if (event.key === "ArrowLeft" && index > 0) show(index - 1);
-  });
+  // ClientRouter でページが入れ替わるたびに、そのページのチュートリアル要素に付け直す
+  const init = () => {
+    tour = document.querySelector<HTMLElement>("#tour");
+    if (!tour) return;
+    part("[data-tour=prev]").addEventListener("click", () => show(index - 1));
+    part("[data-tour=next]").addEventListener("click", () =>
+      index === steps.length - 1 ? end() : show(index + 1),
+    );
+    part("[data-tour=close]").addEventListener("click", end);
+    tour.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") end();
+      if (event.key === "ArrowRight" && index < steps.length - 1)
+        show(index + 1);
+      if (event.key === "ArrowLeft" && index > 0) show(index - 1);
+    });
+    document
+      .querySelectorAll("[data-tour-start]")
+      .forEach((button) => button.addEventListener("click", start));
+  };
+
   window.addEventListener("resize", place);
   window.addEventListener("scroll", place, { passive: true });
-  document
-    .querySelectorAll("[data-tour-start]")
-    .forEach((button) => button.addEventListener("click", start));
+  document.addEventListener("astro:page-load", init);
 </script>
 
 <style>
@@ -181,6 +196,25 @@ const { steps } = Astro.props;
     transition:
       top 0.2s,
       left 0.2s;
+  }
+
+  /* 吹き出しのしっぽ。対象の下に出すときは上向き、上に出すときは下向き */
+  .tour__bubble::before {
+    position: absolute;
+    left: var(--tail-x, 50%);
+    width: 14px;
+    height: 14px;
+    background: inherit;
+    content: "";
+    transform: translateX(-50%) rotate(45deg);
+  }
+
+  .tour__bubble[data-side="below"]::before {
+    top: -7px;
+  }
+
+  .tour__bubble[data-side="above"]::before {
+    bottom: -7px;
   }
 
   .tour__progress {
