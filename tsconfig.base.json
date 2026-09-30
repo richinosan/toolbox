@@ -1,9 +1,0 @@
-{
-  "extends": "astro/tsconfigs/strictest",
-  "compilerOptions": {
-    // 共通コードは npm パッケージにせず、パスエイリアスで参照する
-    "paths": {
-      "@toolbox/ui/*": ["./packages/ui/src/*"]
-    }
-  }
-}

@@ -14,7 +14,7 @@ packages/
 ```
 
 - `package.json` はルートの 1 つだけで、依存はすべてそこで管理します（app / package ごとに `package.json` を持たないルール）。
-- 共通コードは npm パッケージにせず、`tsconfig.base.json` の `paths`（例: `@toolbox/ui/*`）で参照します。
+- 共通コードは npm パッケージにせず、ルート `package.json` の `imports`（例: `#ui/*`）で参照します。
 - 各 app は自分の `astro.config.mjs` と `wrangler.jsonc`（Worker 名・route・assets）を持ち、単独でビルド・デプロイできます。
 
 ## コマンド
