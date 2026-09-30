@@ -140,6 +140,9 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
           ×
         </button>
       </div>
+      <button class="tour-start" type="button" data-tour-start>
+        チュートリアルを開始
+      </button>
       <dl class="spec">
         <dt>動作</dt>
         <dd>{spec.overview}</dd>
@@ -156,9 +159,6 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
           <a href={repositoryUrl}>{repositoryUrl.replace("https://", "")}</a>
         </dd>
       </dl>
-      <button class="tour-start" type="button" data-tour-start>
-        チュートリアルを開始
-      </button>
     </div>
     <Tour steps={tourSteps} />
     <main class="container site-main">
@@ -307,7 +307,7 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 
   .tour-start {
     width: 100%;
-    margin-top: var(--space-6);
+    margin-bottom: var(--space-6);
     padding: var(--space-2) var(--space-4);
     border: 1px solid var(--color-accent);
     border-radius: 8px;
