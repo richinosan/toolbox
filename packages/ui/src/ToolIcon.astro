@@ -1,13 +1,13 @@
 ---
-import { CalendarDays } from "@lucide/astro";
 import type { ToolIconName } from "@toolbox/shared";
+import CalendarIcon from "./icons/CalendarIcon.astro";
 
 interface Props {
   name: ToolIconName;
 }
 
 const icons = {
-  calendar: CalendarDays,
+  calendar: CalendarIcon,
 } satisfies Record<ToolIconName, unknown>;
 
 const { name } = Astro.props;
@@ -21,18 +21,15 @@ const Icon = icons[name];
 <style>
   /* 大きさは利用側で --tool-icon-size を指定して変える */
   .tool-icon {
-    display: inline-grid;
+    display: inline-block;
     flex: none;
-    place-items: center;
     width: var(--tool-icon-size, 2.75rem);
     height: var(--tool-icon-size, 2.75rem);
-    border-radius: 22%;
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
   }
 
   .tool-icon :global(svg) {
-    width: 60%;
-    height: 60%;
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 </style>
