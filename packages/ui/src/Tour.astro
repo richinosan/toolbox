@@ -44,6 +44,7 @@ const { steps } = Astro.props;
 
 <script>
   import * as motion from "./motion";
+  import * as singleton from "./singleton";
 
   type Step = {
     target: string;
@@ -165,9 +166,12 @@ const { steps } = Astro.props;
       .forEach((button) => button.addEventListener("click", start));
   };
 
-  window.addEventListener("resize", place);
-  window.addEventListener("scroll", place, { passive: true });
-  document.addEventListener("astro:page-load", init);
+  // 先に読み込まれたコピーが、以降のページ（別アプリ含む）のチュートリアルもまとめて扱う
+  singleton.once("tour", () => {
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, { passive: true });
+    document.addEventListener("astro:page-load", init);
+  });
 </script>
 
 <style>
