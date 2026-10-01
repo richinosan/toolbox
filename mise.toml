@@ -65,7 +65,7 @@ description = "型チェック（.astro を含むディレクトリは astro che
 run = '''
 for dir in apps/*/ packages/*/; do
   [ -f "$dir/tsconfig.json" ] || continue
-  if find "$dir" -name "*.astro" -not -path "*/node_modules/*" | grep -q .; then
+  if find "$dir" -name "*.astro" -not -path "*/node_modules/*" -print -quit | grep -q .; then
     astro check --root "$dir"
   else
     tsc --noEmit -p "$dir"
