@@ -33,11 +33,15 @@ self.addEventListener("activate", (event) => {
 
 const isHashedAsset = (url) => /^\/(?:[^/]+\/)?_astro\//.test(url.pathname);
 
-const networkFirst = async (request) => {
+// キャッシュへの書き込みは fetch イベントの寿命に含める（応答を返した直後に Service Worker が止まっても書き切れるように）
+const store = (event, cache, request, response) =>
+  event.waitUntil(cache.put(request, response.clone()).catch(() => {}));
+
+const networkFirst = async (event, request) => {
   const cache = await caches.open(CACHE);
   try {
     const response = await fetch(request);
-    if (response.ok) cache.put(request, response.clone());
+    if (response.ok) store(event, cache, request, response);
     return response;
   } catch (error) {
     const cached = await cache.match(request, { ignoreSearch: true });
@@ -46,12 +50,12 @@ const networkFirst = async (request) => {
   }
 };
 
-const cacheFirst = async (request) => {
+const cacheFirst = async (event, request) => {
   const cache = await caches.open(CACHE);
   const cached = await cache.match(request);
   if (cached) return cached;
   const response = await fetch(request);
-  if (response.ok) cache.put(request, response.clone());
+  if (response.ok) store(event, cache, request, response);
   return response;
 };
 
@@ -60,6 +64,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
   event.respondWith(
-    isHashedAsset(url) ? cacheFirst(request) : networkFirst(request),
+    isHashedAsset(url)
+      ? cacheFirst(event, request)
+      : networkFirst(event, request),
   );
 });
