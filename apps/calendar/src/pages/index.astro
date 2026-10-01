@@ -11,13 +11,18 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   description={tool.description}
   spec={{
     overview:
-      "入力された日付の解釈と曜日・Unix time の計算は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
+      "入力された日付の解釈と曜日・Unix time の計算、複数行の整形は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
     network: "なし（入力した日付がサーバーへ送信されることはありません）",
     storage:
       "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。入力した日付はどこにも保存しません（localStorage・Cookie は使いません）。",
     libraries: ["luxon（日付の解釈と計算）"],
   }}
   tour={[
+    {
+      target: "#mode-switch",
+      title: "入力モード",
+      body: "「1件」は 1 つの日付の曜日と Unix time を、「複数行」は何行もの日付をまとめて整形します。",
+    },
     {
       target: "#date-text",
       title: "日付を入力",
@@ -32,6 +37,16 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       target: ".result",
       title: "結果",
       body: "入力した日付の曜日と Unix time（秒）が表示されます。",
+    },
+    {
+      target: "#multi-input",
+      title: "複数行で入力",
+      body: "1 行に 1 つずつ日付を書きます。形式は行ごとに違っていても構いません。",
+    },
+    {
+      target: "#multi-output",
+      title: "まとめて出力",
+      body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。右上のボタンで全部コピーできます。",
     },
   ]}
 >
@@ -54,75 +69,149 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   </ul>
 
   <section class="card calendar">
-    <div class="field">
-      <label class="field__label" for="date-text">
-        日付
-      </label>
-      <div class="field__inputs">
-        <input
-          id="date-text"
-          class="field__input field__input--text"
-          type="text"
-          inputmode="text"
-          autocomplete="off"
-          placeholder="2026-10-01, 10/1, 20261001 など"
-          aria-describedby="date-note"
-        />
-        <!-- ネイティブの date input はブラウザの言語設定で表記が変わる（mm/dd/yyyy など）ため、
-             表示はサービスの言語設定に合わせたボタンにして、カレンダーは showPicker() で開く -->
-        <div class="picker">
-          <button
-            id="date-picker-button"
-            class="field__input picker__button"
-            type="button"
-            aria-label="カレンダーから選択"
-          >
-            <span id="date-picker-label" class="picker__label">
-              yyyy/mm/dd
-            </span>
-            <svg
-              class="picker__icon"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            >
-              <rect x="3" y="5" width="18" height="16" rx="2"></rect>
-              <path d="M3 10h18M8 3v4M16 3v4"></path>
-            </svg>
-          </button>
+    <!-- 1 件ずつ調べるモードと、複数行をまとめて整形するモード -->
+    <div id="mode-switch" class="mode" role="group" aria-label="入力モード">
+      <button
+        id="mode-single"
+        class="mode__button"
+        type="button"
+        aria-pressed="true"
+      >
+        1件
+      </button>
+      <button
+        id="mode-multi"
+        class="mode__button"
+        type="button"
+        aria-pressed="false"
+      >
+        複数行
+      </button>
+    </div>
+
+    <div id="single-panel" class="panel">
+      <div class="field">
+        <label class="field__label" for="date-text">
+          日付
+        </label>
+        <div class="field__inputs">
           <input
-            id="date-picker"
-            class="picker__native"
-            type="date"
-            tabindex="-1"
-            aria-hidden="true"
+            id="date-text"
+            class="field__input field__input--text"
+            type="text"
+            inputmode="text"
+            autocomplete="off"
+            placeholder="2026-10-01, 10/1, 20261001 など"
+            aria-describedby="date-note"
           />
+          <!-- ネイティブの date input はブラウザの言語設定で表記が変わる（mm/dd/yyyy など）ため、
+               表示はサービスの言語設定に合わせたボタンにして、カレンダーは showPicker() で開く -->
+          <div class="picker">
+            <button
+              id="date-picker-button"
+              class="field__input picker__button"
+              type="button"
+              aria-label="カレンダーから選択"
+            >
+              <span id="date-picker-label" class="picker__label">
+                yyyy/mm/dd
+              </span>
+              <svg
+                class="picker__icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              >
+                <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                <path d="M3 10h18M8 3v4M16 3v4"></path>
+              </svg>
+            </button>
+            <input
+              id="date-picker"
+              class="picker__native"
+              type="date"
+              tabindex="-1"
+              aria-hidden="true"
+            />
+          </div>
         </div>
       </div>
-    </div>
-    <p id="date-note" class="note" aria-live="polite"></p>
+      <p id="date-note" class="note" aria-live="polite"></p>
 
-    <dl class="result" aria-live="polite">
-      <div class="result__row">
-        <dt>曜日</dt>
-        <dd id="weekday">—</dd>
+      <dl class="result" aria-live="polite">
+        <div class="result__row">
+          <dt>曜日</dt>
+          <dd id="weekday">—</dd>
+        </div>
+        <div class="result__row">
+          <dt>Unix time（秒）</dt>
+          <dd class="result__value">
+            <span id="unix-time" class="result__mono">
+              —
+            </span>
+            <span class="copy">
+              <button
+                id="copy-unix-time"
+                class="copy__button"
+                type="button"
+                aria-label="Unix time をコピー"
+                aria-describedby="copy-tooltip"
+                disabled
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+                  <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
+                </svg>
+              </button>
+              <!-- レイアウトに影響しないよう、コピー結果はボタン上のツールチップで出す -->
+              <span
+                id="copy-tooltip"
+                class="copy__tooltip"
+                role="status"
+              ></span>
+            </span>
+          </dd>
+        </div>
+      </dl>
+    </div>
+
+    <div id="multi-panel" class="panel" hidden>
+      <div class="field">
+        <label class="field__label" for="multi-input">
+          日付（1 行に 1 つ）
+        </label>
+        <textarea
+          id="multi-input"
+          class="field__input multi__textarea"
+          rows="6"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder={"2026-10-01\n10/2\n2026年10月3日"}
+        ></textarea>
       </div>
-      <div class="result__row">
-        <dt>Unix time（秒）</dt>
-        <dd class="result__value">
-          <span id="unix-time" class="result__mono">
-            —
-          </span>
+      <div class="field">
+        <div class="multi__head">
+          <label class="field__label" for="multi-output">
+            出力（yyyy年mm月dd日(曜)）
+          </label>
           <span class="copy">
             <button
-              id="copy-unix-time"
+              id="copy-multi"
               class="copy__button"
               type="button"
-              aria-label="Unix time をコピー"
-              aria-describedby="copy-tooltip"
+              aria-label="出力をすべてコピー"
+              aria-describedby="copy-multi-tooltip"
               disabled
             >
               <svg
@@ -138,12 +227,23 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
                 <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
               </svg>
             </button>
-            <!-- レイアウトに影響しないよう、コピー結果はボタン上のツールチップで出す -->
-            <span id="copy-tooltip" class="copy__tooltip" role="status"></span>
+            <span
+              id="copy-multi-tooltip"
+              class="copy__tooltip"
+              role="status"
+            ></span>
           </span>
-        </dd>
+        </div>
+        <textarea
+          id="multi-output"
+          class="field__input multi__textarea"
+          rows="6"
+          readonly
+          spellcheck="false"
+        ></textarea>
       </div>
-    </dl>
+      <p id="multi-note" class="note" aria-live="polite"></p>
+    </div>
   </section>
 </Layout>
 
@@ -233,16 +333,20 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     };
 
     text.addEventListener("input", render);
-    let tooltipTimer: ReturnType<typeof setTimeout> | undefined;
-    const showTooltip = (message: string) => {
-      copyTooltip.textContent = message;
-      copyTooltip.classList.add("copy__tooltip--visible");
-      motion.bounce(copyTooltip, "in");
-      clearTimeout(tooltipTimer);
-      tooltipTimer = setTimeout(() => {
-        copyTooltip.classList.remove("copy__tooltip--visible");
-      }, 1500);
+    // コピー結果はレイアウトを動かさないよう、ボタン上のツールチップで出す
+    const createTooltip = (tooltip: HTMLElement) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return (message: string) => {
+        tooltip.textContent = message;
+        tooltip.classList.add("copy__tooltip--visible");
+        motion.bounce(tooltip, "in");
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          tooltip.classList.remove("copy__tooltip--visible");
+        }, 1500);
+      };
     };
+    const showTooltip = createTooltip(copyTooltip);
 
     copyButton.addEventListener("click", async () => {
       try {
@@ -267,6 +371,62 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       text.value = picker.value;
       render();
     });
+
+    // 複数行モード：入力と同じ行に「yyyy年mm月dd日(曜)」で出力する
+    const modeButtons = {
+      single: document.querySelector<HTMLButtonElement>("#mode-single")!,
+      multi: document.querySelector<HTMLButtonElement>("#mode-multi")!,
+    };
+    const panels = {
+      single: document.querySelector<HTMLElement>("#single-panel")!,
+      multi: document.querySelector<HTMLElement>("#multi-panel")!,
+    };
+    const multiInput =
+      document.querySelector<HTMLTextAreaElement>("#multi-input")!;
+    const multiOutput =
+      document.querySelector<HTMLTextAreaElement>("#multi-output")!;
+    const multiNote = document.querySelector<HTMLElement>("#multi-note")!;
+    const copyMulti = document.querySelector<HTMLButtonElement>("#copy-multi")!;
+    const showMultiTooltip = createTooltip(
+      document.querySelector<HTMLElement>("#copy-multi-tooltip")!,
+    );
+
+    const setMode = (mode: "single" | "multi") => {
+      for (const key of ["single", "multi"] as const) {
+        modeButtons[key].setAttribute("aria-pressed", String(key === mode));
+        panels[key].hidden = key !== mode;
+      }
+      if (mode === "multi") multiInput.focus();
+    };
+    modeButtons.single.addEventListener("click", () => setMode("single"));
+    modeButtons.multi.addEventListener("click", () => setMode("multi"));
+
+    const renderMulti = () => {
+      const result = date.formatLines(multiInput.value);
+      multiOutput.value = result.output;
+      copyMulti.disabled = !result.output;
+      const invalid = result.invalidLines.length > 0;
+      multiNote.classList.toggle("note--error", invalid);
+      if (invalid) {
+        multiNote.textContent = `${result.invalidLines.join("、")} 行目を日付として解釈できません。`;
+      } else if (result.parsedCount > 0) {
+        multiNote.textContent = `${result.parsedCount} 件を変換しました。`;
+      } else {
+        multiNote.textContent = `1 行に 1 つずつ日付を入力してください。日付のみの入力は ${date.TIME_ZONE_LABEL} として扱います。`;
+      }
+    };
+    multiInput.addEventListener("input", renderMulti);
+    copyMulti.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(multiOutput.value);
+        showMultiTooltip("コピーしました");
+      } catch {
+        // クリップボードが使えない環境では出力を選択状態にして手動コピーに任せる
+        multiOutput.select();
+        showMultiTooltip("選択しました");
+      }
+    });
+    renderMulti();
 
     if (!text.value)
       text.value =
@@ -317,6 +477,67 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
 
   .calendar {
     max-width: 480px;
+  }
+
+  .mode {
+    display: flex;
+    gap: var(--space-1);
+    margin-bottom: var(--space-4);
+    padding: var(--space-1);
+    border-radius: 10px;
+    background: var(--color-bg);
+  }
+
+  .mode__button {
+    flex: 1;
+    min-height: 2.25rem;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .mode__button[aria-pressed="true"] {
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  }
+
+  .panel {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .panel[hidden] {
+    display: none;
+  }
+
+  .multi__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  /* 右端のボタンのツールチップは、狭い画面で画面外に出ないよう右揃えにする */
+  .multi__head .copy__tooltip {
+    right: 0;
+    left: auto;
+    transform: translate(0, 4px);
+  }
+
+  .multi__head .copy__tooltip--visible {
+    transform: translate(0, 0);
+  }
+
+  .multi__textarea {
+    min-height: 9rem;
+    resize: vertical;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.6;
   }
 
   .field {

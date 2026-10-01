@@ -18,7 +18,11 @@ export const tools: readonly ToolDefinition[] = [
     id: "calendar",
     name: "Calendar",
     description: "暦に関連するツール",
-    features: ["日付から曜日を確認する", "日付から Unix time（秒）を確認する"],
+    features: [
+      "日付から曜日を確認する",
+      "日付から Unix time（秒）を確認する",
+      "複数行の日付をまとめて「2026年10月01日(木)」の形式にする",
+    ],
     href: "/calendar",
     icon: "calendar",
   },
