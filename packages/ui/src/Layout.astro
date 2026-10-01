@@ -191,16 +191,19 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 
 <script>
   import * as motion from "./motion";
+  import * as singleton from "./singleton";
 
   // ボタンやタイルは押したときに跳ねる。document に付けるので ClientRouter の遷移後もそのまま効く
-  document.addEventListener("click", (event) => {
-    const target =
-      event.target instanceof Element
-        ? event.target.closest(
-            "button:not(:disabled), .tool-tile, .icon-button",
-          )
-        : null;
-    if (target) motion.bounce(target, "press");
+  singleton.once("press-bounce", () => {
+    document.addEventListener("click", (event) => {
+      const target =
+        event.target instanceof Element
+          ? event.target.closest(
+              "button:not(:disabled), .tool-tile, .icon-button",
+            )
+          : null;
+      if (target) motion.bounce(target, "press");
+    });
   });
 
   // オフラインでも開けるように Service Worker を登録する（本番ビルドのみ）
