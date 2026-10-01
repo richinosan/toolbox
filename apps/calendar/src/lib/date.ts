@@ -19,7 +19,7 @@ export type DateInfo = {
  * - 年月日（例: 2026年10月1日, 10月1日, 1日。年・月を省略すると今の年・月）
  * - 区切り（/ ／ -）: 2026/10/1, 26/10/1, 10/1（年を省略すると今の年）
  * - 8 桁: 20261001, 6 桁: 261001（2 桁の年は 00〜59 → 20xx, 60〜99 → 19xx）
- * 全角数字・全角記号は半角として扱う。解釈できなければ null。
+ * 全角数字・全角記号は半角として扱う。西暦 1 年より前と、解釈できない入力は null。
  */
 export function parseDate(
   input: string,
@@ -30,7 +30,8 @@ export function parseDate(
 
   const dateTime = parseText(text, now.setZone(TIME_ZONE));
   const weekday = dateTime?.setLocale("ja").weekdayLong;
-  if (!dateTime?.isValid || !weekday) return null;
+  // 西暦 1 年より前（ISO の 0000 年や負の年）は、ピッカーの表示や年の桁数と食い違うので扱わない
+  if (!dateTime?.isValid || !weekday || dateTime.year < 1) return null;
 
   return {
     dateTime,
