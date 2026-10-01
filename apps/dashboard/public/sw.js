@@ -6,14 +6,40 @@
 const CACHE = "toolbox-v1";
 const PRECACHE = ["/", "/calendar", "/manifest.webmanifest", "/icons/icon.svg"];
 
+// 事前キャッシュ。ページの HTML だけでなく、そこから辿れる CSS・JS・フォントも一緒に保存する
+// （初回訪問のあとオフラインで開いても、見た目と動作が揃うように）
+const ASSET_PATH = /\/(?:[\w-]+\/)?_astro\/[^"'()\s\\>]+/g;
+const RELATIVE_IMPORT = /(?:from|import)\s*["'](\.{1,2}\/[^"']+)["']/g;
+
+const crawl = async (cache, url, seen) => {
+  if (seen.has(url)) return;
+  seen.add(url);
+  const response = await fetch(url);
+  if (!response.ok) return;
+  await cache.put(url, response.clone());
+  const type = response.headers.get("content-type") ?? "";
+  if (!/html|css|javascript/.test(type)) return;
+  const text = await response.text();
+  const found = new Set(text.match(ASSET_PATH) ?? []);
+  if (/javascript/.test(type))
+    for (const [, path] of text.matchAll(RELATIVE_IMPORT))
+      found.add(new URL(path, url).pathname);
+  await Promise.all(
+    [...found].map((path) => crawl(cache, path, seen).catch(() => {})),
+  );
+};
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      // どれかのツールが未デプロイでもインストールを止めない
-      .then((cache) =>
-        Promise.all(PRECACHE.map((url) => cache.add(url).catch(() => {}))),
-      )
+      .then((cache) => {
+        const seen = new Set();
+        // どれかのツールが未デプロイでもインストールを止めない
+        return Promise.all(
+          PRECACHE.map((url) => crawl(cache, url, seen).catch(() => {})),
+        );
+      })
       .then(() => self.skipWaiting()),
   );
 });
