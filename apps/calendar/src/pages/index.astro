@@ -14,7 +14,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       "入力された日付の解釈と曜日・Unix time の計算、複数行の整形は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
     network: "なし（入力した日付がサーバーへ送信されることはありません）",
     storage:
-      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。入力した日付はどこにも保存しません（localStorage・Cookie は使いません）。",
+      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。localStorage には、選んだ入力モード（「1件」か「複数行」）だけを保存します。入力した日付は保存しません。Cookie は使いません。",
     libraries: ["luxon（日付の解釈と計算）"],
   }}
   tour={[
@@ -385,15 +385,40 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       document.querySelector<HTMLElement>("#copy-multi-tooltip")!,
     );
 
-    const setMode = (mode: "single" | "multi") => {
+    // 選んだモードだけを localStorage に覚えておく（入力した日付は保存しない）
+    const modeKey = "toolbox:calendar:mode";
+    type Mode = "single" | "multi";
+    const readMode = (): Mode => {
+      try {
+        return localStorage.getItem(modeKey) === "multi" ? "multi" : "single";
+      } catch {
+        // localStorage が使えない環境では毎回「1件」から始める
+        return "single";
+      }
+    };
+    const saveMode = (mode: Mode) => {
+      try {
+        localStorage.setItem(modeKey, mode);
+      } catch {
+        // 保存できなくても、そのまま使える
+      }
+    };
+    const setMode = (mode: Mode) => {
       for (const key of ["single", "multi"] as const) {
         modeButtons[key].setAttribute("aria-pressed", String(key === mode));
         panels[key].hidden = key !== mode;
       }
-      if (mode === "multi") multiInput.focus();
     };
-    modeButtons.single.addEventListener("click", () => setMode("single"));
-    modeButtons.multi.addEventListener("click", () => setMode("multi"));
+    for (const mode of ["single", "multi"] as const) {
+      modeButtons[mode].addEventListener("click", (event) => {
+        setMode(mode);
+        // チュートリアルが表示のために押した場合（isTrusted が false）は、選択として覚えない
+        if (!event.isTrusted) return;
+        saveMode(mode);
+        if (mode === "multi") multiInput.focus();
+      });
+    }
+    setMode(readMode());
 
     const renderMulti = () => {
       const result = date.formatLines(multiInput.value);
