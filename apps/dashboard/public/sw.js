@@ -23,7 +23,7 @@ const crawl = async (cache, url, seen) => {
   const found = new Set(text.match(ASSET_PATH) ?? []);
   if (/javascript/.test(type))
     for (const [, path] of text.matchAll(RELATIVE_IMPORT))
-      found.add(new URL(path, url).pathname);
+      found.add(new URL(path, new URL(url, self.location.origin)).pathname);
   await Promise.all(
     [...found].map((path) => crawl(cache, path, seen).catch(() => {})),
   );
