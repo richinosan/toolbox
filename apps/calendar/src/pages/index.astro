@@ -398,7 +398,8 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     const renderMulti = () => {
       const result = date.formatLines(multiInput.value);
       multiOutput.value = result.output;
-      copyMulti.disabled = !result.output;
+      copyMulti.disabled =
+        result.parsedCount === 0 && result.invalidLines.length === 0;
       const invalid = result.invalidLines.length > 0;
       multiNote.classList.toggle("note--error", invalid);
       if (invalid) {

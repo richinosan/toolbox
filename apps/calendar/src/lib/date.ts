@@ -122,5 +122,5 @@ export function formatLines(
     parsedCount += 1;
     return formatJapanese(info);
   });
-  return { output: lines.join("\n").trimEnd(), invalidLines, parsedCount };
+  return { output: lines.join("\n"), invalidLines, parsedCount };
 }
