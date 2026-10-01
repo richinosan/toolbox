@@ -17,11 +17,46 @@ description = "依存パッケージをインストール（lockfile どおり�
 run = "ni --frozen"
 
 [tasks.build]
-description = "全 app をビルド"
+description = "app をビルド（例: mise run build --all / --dashboard / --calendar）"
+# --<app> は apps/ 配下のディレクトリ名から決まるので、ツールを足しても mise.toml は変えなくてよい
+usage = 'arg "[target]..." help="--all または --<app>（複数指定可。例: --dashboard --calendar）" var=#true'
 run = '''
-for app in apps/*/; do
-  [ -f "$app/astro.config.mjs" ] || continue
-  astro build --root "$app"
+available=""
+for dir in apps/*/; do
+  [ -f "${dir}astro.config.mjs" ] || continue
+  available="$available $(basename "$dir")"
+done
+
+show_usage() {
+  echo "使い方: mise run build --all | --<app>..." >&2
+  echo "  --all" >&2
+  for app in $available; do echo "  --$app" >&2; done
+}
+
+selected=" "
+for target in $usage_target; do
+  case "$target" in
+    --all) selected=" $available " ;;
+    --*)
+      name="${target#--}"
+      case " $available " in
+        *" $name "*) selected="$selected$name " ;;
+        *) echo "不明な app です: $target" >&2; show_usage; exit 1 ;;
+      esac
+      ;;
+    *) echo "app は --<app> の形で指定してください: $target" >&2; show_usage; exit 1 ;;
+  esac
+done
+
+if [ "$selected" = " " ]; then
+  show_usage
+  exit 1
+fi
+
+for app in $available; do
+  case "$selected" in
+    *" $app "*) astro build --root "apps/$app" ;;
+  esac
 done
 '''
 
