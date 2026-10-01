@@ -25,26 +25,31 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     },
     {
       target: "#date-text",
+      reveal: "#mode-single",
       title: "日付を入力",
       body: "2026-10-01、2026年10月1日、10/1、20261001 などの形式で入力できます。年や月を省略すると今年・今月として扱います。",
     },
     {
       target: "#date-picker-button",
+      reveal: "#mode-single",
       title: "カレンダーから選ぶ",
       body: "カレンダーで日付を選ぶこともできます。テキスト入力と連動します。",
     },
     {
       target: ".result",
+      reveal: "#mode-single",
       title: "結果",
       body: "入力した日付の曜日と Unix time（秒）が表示されます。",
     },
     {
       target: "#multi-input",
+      reveal: "#mode-multi",
       title: "複数行で入力",
       body: "1 行に 1 つずつ日付を書きます。形式は行ごとに違っていても構いません。",
     },
     {
       target: "#multi-output",
+      reveal: "#mode-multi",
       title: "まとめて出力",
       body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。右上のボタンで全部コピーできます。",
     },
