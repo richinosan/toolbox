@@ -27,7 +27,7 @@ node / pnpm / ni は [mise](https://mise.jdx.dev/) で管理し、コマンド�
 ```sh
 mise install          # node / pnpm / ni を入れる
 mise run install      # 依存パッケージをインストール
-mise run build        # 全 app をビルド
+mise run build --all  # 全 app をビルド（--dashboard / --calendar のように app を指定することもできる）
 mise run check        # 型チェック（astro check / tsc）
 mise run lint         # oxlint（named import 禁止など独自ルールは lint/plugin.mjs）+ 型チェック
 mise run format       # Prettier で整形
