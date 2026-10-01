@@ -90,3 +90,37 @@ function toFullYear(year: string): number {
   if (year.length !== 2) return value;
   return value < 60 ? 2000 + value : 1900 + value;
 }
+
+/** 「2026年10月01日(木)」の形式（年は 4 桁、月日は 2 桁、曜日は 1 文字）に整える。 */
+export function formatJapanese(info: DateInfo): string {
+  return info.dateTime.setLocale("ja").toFormat("yyyy年MM月dd日(EEE)");
+}
+
+export type MultiLineResult = {
+  /** 入力と同じ行数の出力。空行はそのまま、解釈できない行は理由つきで残す。 */
+  output: string;
+  /** 解釈できなかった行番号（1 始まり） */
+  invalidLines: number[];
+  /** 解釈できた行の数 */
+  parsedCount: number;
+};
+
+/** 1 行に 1 つ書かれた日付をまとめて整形する。 */
+export function formatLines(
+  input: string,
+  now = luxon.DateTime.now(),
+): MultiLineResult {
+  const invalidLines: number[] = [];
+  let parsedCount = 0;
+  const lines = input.split(/\r\n|\r|\n/).map((line, i) => {
+    if (!line.trim()) return "";
+    const info = parseDate(line, now);
+    if (!info) {
+      invalidLines.push(i + 1);
+      return `解釈できません: ${line.trim()}`;
+    }
+    parsedCount += 1;
+    return formatJapanese(info);
+  });
+  return { output: lines.join("\n").trimEnd(), invalidLines, parsedCount };
+}
