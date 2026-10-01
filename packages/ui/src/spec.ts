@@ -16,4 +16,6 @@ export type TourStep = {
   target: string;
   title: string;
   body: string;
+  /** 対象が隠れているとき、先にクリックして表示させる要素の CSS セレクター（モードやタブの切り替えボタンなど） */
+  reveal?: string;
 };

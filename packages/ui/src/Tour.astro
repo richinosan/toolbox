@@ -45,7 +45,12 @@ const { steps } = Astro.props;
 <script>
   import * as motion from "./motion";
 
-  type Step = { target: string; title: string; body: string };
+  type Step = {
+    target: string;
+    title: string;
+    body: string;
+    reveal?: string;
+  };
 
   const margin = 8;
   const gap = 12;
@@ -110,6 +115,9 @@ const { steps } = Astro.props;
     part<HTMLButtonElement>("[data-tour=prev]").hidden = index === 0;
     const next = part<HTMLButtonElement>("[data-tour=next]");
     next.textContent = index === steps.length - 1 ? "完了" : "次へ";
+    // モードやタブの切り替えで隠れている対象は、切り替えボタンを押して表示する
+    if (current.element.getClientRects().length === 0 && current.step.reveal)
+      document.querySelector<HTMLElement>(current.step.reveal)?.click();
     current.element.scrollIntoView({ block: "center", behavior: "instant" });
     place();
     // ステップが変わるたびに吹き出しを跳ねさせる
@@ -122,7 +130,8 @@ const { steps } = Astro.props;
     const allSteps: Step[] = JSON.parse(tour.dataset["steps"] ?? "[]");
     steps = allSteps.flatMap((step) => {
       const element = document.querySelector<HTMLElement>(step.target);
-      return element && element.getClientRects().length > 0
+      // 隠れていても reveal で表示できるステップは残す
+      return element && (element.getClientRects().length > 0 || step.reveal)
         ? [{ step, element }]
         : [];
     });
