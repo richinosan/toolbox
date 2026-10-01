@@ -50,106 +50,156 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     },
   ]}
 >
-  <a class="back-link" href="/">
-    ← ツール一覧へ戻る
-  </a>
-
-  <div class="tool-header">
-    <ToolIcon name={tool.icon} />
-    <h1 class="tool-header__name">{tool.name}</h1>
-  </div>
-
-  <section class="card calendar">
-    <!-- 1 件ずつ調べるモードと、複数行をまとめて整形するモード -->
-    <div id="mode-switch" class="mode" role="group" aria-label="入力モード">
-      <button
-        id="mode-single"
-        class="mode__button"
-        type="button"
-        aria-pressed="true"
-      >
-        1件
-      </button>
-      <button
-        id="mode-multi"
-        class="mode__button"
-        type="button"
-        aria-pressed="false"
-      >
-        複数行
-      </button>
+  <div class="page">
+    <div class="tool-header">
+      <ToolIcon name={tool.icon} />
+      <h1 class="tool-header__name">{tool.name}</h1>
     </div>
 
-    <div id="single-panel" class="panel">
-      <div class="field">
-        <label class="field__label" for="date-text">
-          日付
-        </label>
-        <div class="field__inputs">
-          <input
-            id="date-text"
-            class="field__input field__input--text"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            placeholder="2026-10-01, 10/1, 20261001 など"
-            aria-describedby="date-note"
-          />
-          <!-- ネイティブの date input はブラウザの言語設定で表記が変わる（mm/dd/yyyy など）ため、
-               表示はサービスの言語設定に合わせたボタンにして、カレンダーは showPicker() で開く -->
-          <div class="picker">
-            <button
-              id="date-picker-button"
-              class="field__input picker__button"
-              type="button"
-              aria-label="カレンダーから選択"
-            >
-              <span id="date-picker-label" class="picker__label">
-                yyyy/mm/dd
-              </span>
-              <svg
-                class="picker__icon"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              >
-                <rect x="3" y="5" width="18" height="16" rx="2"></rect>
-                <path d="M3 10h18M8 3v4M16 3v4"></path>
-              </svg>
-            </button>
+    <section class="card calendar">
+      <!-- 1 件ずつ調べるモードと、複数行をまとめて整形するモード -->
+      <div id="mode-switch" class="mode" role="group" aria-label="入力モード">
+        <button
+          id="mode-single"
+          class="mode__button"
+          type="button"
+          aria-pressed="true"
+        >
+          1件
+        </button>
+        <button
+          id="mode-multi"
+          class="mode__button"
+          type="button"
+          aria-pressed="false"
+        >
+          複数行
+        </button>
+      </div>
+
+      <div id="single-panel" class="panel">
+        <div class="field">
+          <label class="field__label" for="date-text">
+            日付
+          </label>
+          <div class="field__inputs">
             <input
-              id="date-picker"
-              class="picker__native"
-              type="date"
-              tabindex="-1"
-              aria-hidden="true"
+              id="date-text"
+              class="field__input field__input--text"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              placeholder="2026-10-01, 10/1, 20261001 など"
+              aria-describedby="date-note"
             />
+            <!-- ネイティブの date input はブラウザの言語設定で表記が変わる（mm/dd/yyyy など）ため、
+                 表示はサービスの言語設定に合わせたボタンにして、カレンダーは showPicker() で開く -->
+            <div class="picker">
+              <button
+                id="date-picker-button"
+                class="field__input picker__button"
+                type="button"
+                aria-label="カレンダーから選択"
+              >
+                <span id="date-picker-label" class="picker__label">
+                  yyyy/mm/dd
+                </span>
+                <svg
+                  class="picker__icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                  <path d="M3 10h18M8 3v4M16 3v4"></path>
+                </svg>
+              </button>
+              <input
+                id="date-picker"
+                class="picker__native"
+                type="date"
+                tabindex="-1"
+                aria-hidden="true"
+              />
+            </div>
           </div>
         </div>
-      </div>
-      <p id="date-note" class="note" aria-live="polite"></p>
+        <p id="date-note" class="note" aria-live="polite"></p>
 
-      <dl class="result" aria-live="polite">
-        <div class="result__row">
-          <dt>曜日</dt>
-          <dd id="weekday">—</dd>
+        <dl class="result" aria-live="polite">
+          <div class="result__row">
+            <dt>曜日</dt>
+            <dd id="weekday">—</dd>
+          </div>
+          <div class="result__row">
+            <dt>Unix time（秒）</dt>
+            <dd class="result__value">
+              <span id="unix-time" class="result__mono">
+                —
+              </span>
+              <span class="copy">
+                <button
+                  id="copy-unix-time"
+                  class="copy__button"
+                  type="button"
+                  aria-label="Unix time をコピー"
+                  aria-describedby="copy-tooltip"
+                  disabled
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+                    <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
+                  </svg>
+                </button>
+                <!-- レイアウトに影響しないよう、コピー結果はボタン上のツールチップで出す -->
+                <span
+                  id="copy-tooltip"
+                  class="copy__tooltip"
+                  role="status"
+                ></span>
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <div id="multi-panel" class="panel" hidden>
+        <div class="field">
+          <label class="field__label" for="multi-input">
+            日付（1 行に 1 つ）
+          </label>
+          <textarea
+            id="multi-input"
+            class="field__input multi__textarea"
+            rows="6"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder={"2026-10-01\n10/2\n2026年10月3日"}
+          ></textarea>
         </div>
-        <div class="result__row">
-          <dt>Unix time（秒）</dt>
-          <dd class="result__value">
-            <span id="unix-time" class="result__mono">
-              —
-            </span>
+        <div class="field">
+          <div class="multi__head">
+            <label class="field__label" for="multi-output">
+              出力（yyyy年mm月dd日(曜)）
+            </label>
             <span class="copy">
               <button
-                id="copy-unix-time"
+                id="copy-multi"
                 class="copy__button"
                 type="button"
-                aria-label="Unix time をコピー"
-                aria-describedby="copy-tooltip"
+                aria-label="出力をすべてコピー"
+                aria-describedby="copy-multi-tooltip"
                 disabled
               >
                 <svg
@@ -165,77 +215,25 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
                   <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
                 </svg>
               </button>
-              <!-- レイアウトに影響しないよう、コピー結果はボタン上のツールチップで出す -->
               <span
-                id="copy-tooltip"
+                id="copy-multi-tooltip"
                 class="copy__tooltip"
                 role="status"
               ></span>
             </span>
-          </dd>
+          </div>
+          <textarea
+            id="multi-output"
+            class="field__input multi__textarea"
+            rows="6"
+            readonly
+            spellcheck="false"
+          ></textarea>
         </div>
-      </dl>
-    </div>
-
-    <div id="multi-panel" class="panel" hidden>
-      <div class="field">
-        <label class="field__label" for="multi-input">
-          日付（1 行に 1 つ）
-        </label>
-        <textarea
-          id="multi-input"
-          class="field__input multi__textarea"
-          rows="6"
-          spellcheck="false"
-          autocomplete="off"
-          placeholder={"2026-10-01\n10/2\n2026年10月3日"}
-        ></textarea>
+        <p id="multi-note" class="note" aria-live="polite"></p>
       </div>
-      <div class="field">
-        <div class="multi__head">
-          <label class="field__label" for="multi-output">
-            出力（yyyy年mm月dd日(曜)）
-          </label>
-          <span class="copy">
-            <button
-              id="copy-multi"
-              class="copy__button"
-              type="button"
-              aria-label="出力をすべてコピー"
-              aria-describedby="copy-multi-tooltip"
-              disabled
-            >
-              <svg
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <rect x="9" y="9" width="12" height="12" rx="2"></rect>
-                <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
-              </svg>
-            </button>
-            <span
-              id="copy-multi-tooltip"
-              class="copy__tooltip"
-              role="status"
-            ></span>
-          </span>
-        </div>
-        <textarea
-          id="multi-output"
-          class="field__input multi__textarea"
-          rows="6"
-          readonly
-          spellcheck="false"
-        ></textarea>
-      </div>
-      <p id="multi-note" class="note" aria-live="polite"></p>
-    </div>
-  </section>
+    </section>
+  </div>
 </Layout>
 
 <script>
@@ -429,19 +427,6 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
 </script>
 
 <style>
-  .back-link {
-    display: inline-block;
-    margin-bottom: var(--space-4);
-    color: var(--color-text-muted);
-    font-size: 0.875rem;
-    text-decoration: none;
-  }
-
-  .back-link:hover {
-    color: var(--color-text);
-    text-decoration: underline;
-  }
-
   .tool-header {
     display: flex;
     gap: var(--space-4);
@@ -454,8 +439,11 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     line-height: 1.3;
   }
 
-  .calendar {
-    max-width: 480px;
+  /* ヘッダーの下は中央寄せの 1 カラムにする（左だけに寄って右が空かないように） */
+  .page {
+    width: 100%;
+    max-width: 520px;
+    margin-inline: auto;
   }
 
   .mode {
