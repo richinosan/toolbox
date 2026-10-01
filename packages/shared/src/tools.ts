@@ -4,10 +4,8 @@ export type ToolIconName = "calendar";
 export type ToolDefinition = {
   id: string;
   name: string;
-  /** ツールが何であるかの短い説明 */
+  /** ツールが何であるかの短い説明（画面には出さず、ページの meta description に使う） */
   description: string;
-  /** ツールでできること（説明とは分けて管理する） */
-  features: readonly string[];
   /** toolbox.richinosan.com 配下のパス。各ツール Worker の route と一致させる。 */
   href: string;
   icon: ToolIconName;
@@ -18,11 +16,6 @@ export const tools: readonly ToolDefinition[] = [
     id: "calendar",
     name: "Calendar",
     description: "暦に関連するツール",
-    features: [
-      "日付から曜日を確認する",
-      "日付から Unix time（秒）を確認する",
-      "複数行の日付をまとめて「2026年10月01日(木)」の形式にする",
-    ],
     href: "/calendar",
     icon: "calendar",
   },
