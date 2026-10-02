@@ -92,7 +92,9 @@ const ALLOWED_URL = /^(?:https?:\/\/|mailto:|tel:|\/|\.{1,2}\/|#)/i;
 
 export const checkUrl = (raw: string): UrlCheck => {
   const url = raw.trim();
-  if (url === "") return { ok: true, href: "#" };
+  // 空や # だけのリンクは、押すと貼り付け先のページを開き直したり先頭へ戻したりするので出力しない
+  if (url === "" || url === "#")
+    return { ok: false, reason: "リンク先の URL を入力してください。" };
   // 空白・改行・制御文字を含む URL は貼り付けミスなので弾く
   if (/[\s\p{Cc}]/u.test(url))
     return { ok: false, reason: "URL に空白や改行は使えません。" };
@@ -126,10 +128,26 @@ export const contrastRatio = (a: string, b: string) => {
   return (light + 0.05) / (dark + 0.05);
 };
 
-/** 文字色と背景（グラデーションなら両端）のうち、いちばん低い比。 */
+/** 2 色を sRGB の値のまま（CSS の linear-gradient と同じ補間で）混ぜる。t は 0〜1。 */
+const mix = (from: string, to: string, t: number) =>
+  `#${[0, 1, 2]
+    .map((i) => {
+      const a = Math.round(channel(from, i) * 255);
+      const b = Math.round(channel(to, i) * 255);
+      return Math.round(a + (b - a) * t)
+        .toString(16)
+        .padStart(2, "0");
+    })
+    .join("")}`;
+
+const GRADIENT_SAMPLES = 16;
+
+/** 文字色と背景のうち、いちばん低い比。グラデーションは途中の色も含めて調べる（両端が良くても中間で悪くなることがある）。 */
 export const worstContrast = (settings: Settings) => {
   const backgrounds = settings.gradient
-    ? [settings.background, settings.backgroundEnd]
+    ? Array.from({ length: GRADIENT_SAMPLES + 1 }, (_, i) =>
+        mix(settings.background, settings.backgroundEnd, i / GRADIENT_SAMPLES),
+      )
     : [settings.background];
   return Math.min(
     ...backgrounds.map((bg) => contrastRatio(settings.color, bg)),

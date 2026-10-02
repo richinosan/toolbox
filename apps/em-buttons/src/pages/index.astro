@@ -422,11 +422,7 @@ const initial = button.defaultSettings;
       const href = urlCheck.ok ? urlCheck.href : "#";
 
       urlNote.classList.toggle("note--error", !urlCheck.ok);
-      urlNote.textContent = urlCheck.ok
-        ? settings.url.trim() === ""
-          ? "未入力のときは、リンク先が # になります（クリックしても移動しません）。"
-          : ""
-        : urlCheck.reason;
+      urlNote.textContent = urlCheck.ok ? "" : urlCheck.reason;
 
       // プレビューは、実際に出力するコードと同じものを描く
       shadow.innerHTML = button.buildSnippet(
