@@ -41,9 +41,17 @@ mise run format       # Prettier で整形
 mise run tests        # lint + 整形チェック
 mise run dev <app>    # app を開発サーバーで起動
 mise run deploy <app> # app をビルドしてデプロイ
+mise run deploy-all   # 全 app をビルドしてデプロイ（GitHub Actions が使う）
 ```
 
 ## ツールの追加
 
 1. `apps/<tool>/` を既存 app と同じ形で作成し、`base` / `outDir` / `cloudflare.config.ts` の route を `/<tool>` に合わせる
 2. `packages/shared/src/tools.ts` にツール定義を追加する（アイコンは `packages/ui/src/icons/` に SVG コンポーネントを追加し、`packages/ui/src/ToolIcon.astro` に対応を追加）
+
+## デプロイ（GitHub Actions）
+
+`main` への push（と手動実行）で `.github/workflows/deploy.yml` が走り、[jdx/mise-action](https://github.com/jdx/mise-action) で mise.toml のツールを入れたうえで、`mise run install` → `mise run tests` → `mise run deploy-all` の順に実行します。
+
+- リポジトリの Secrets に `CF_ID`（Cloudflare のアカウント ID）と `CF_TOKEN`（API トークン）を設定します。workflow が cf CLI の読む `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` として渡します。
+- API トークンには Workers Scripts の編集権限と、route 用に対象 zone（richinosan.com）の Workers Routes の編集権限が必要です。
