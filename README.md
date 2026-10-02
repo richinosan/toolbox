@@ -41,7 +41,6 @@ mise run format       # Prettier で整形
 mise run tests        # lint + 整形チェック
 mise run dev <app>    # app を開発サーバーで起動
 mise run deploy <app> # app をビルドしてデプロイ
-mise run deploy-all   # 全 app をビルドしてデプロイ（GitHub Actions が使う）
 ```
 
 ## ツールの追加
@@ -51,7 +50,9 @@ mise run deploy-all   # 全 app をビルドしてデプロイ（GitHub Actions 
 
 ## デプロイ（GitHub Actions）
 
-`main` への push（と手動実行）で `.github/workflows/deploy.yml` が走り、[jdx/mise-action](https://github.com/jdx/mise-action) で mise.toml のツールを入れたうえで、`mise run install` → `mise run tests` → `mise run deploy-all` の順に実行します。
+app 単位でデプロイします。`.github/workflows/deploy.yml` が [jdx/mise-action](https://github.com/jdx/mise-action) で mise.toml のツールを入れたうえで、`mise run install` → `mise run tests` → `mise run deploy <app>` の順に実行します（`main` への push では動きません）。
 
+- タグ `<app>/v*` を push するとその app をデプロイします（例: `git tag calendar/v1.0.0 && git push origin calendar/v1.0.0`）。
+- Actions の Run workflow（手動実行）で app 名を入力してもデプロイできます。
 - リポジトリの Secrets に `CF_ID`（Cloudflare のアカウント ID）と `CF_TOKEN`（API トークン）を設定します。workflow が cf CLI の読む `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` として渡します。
 - API トークンには Workers Scripts の編集権限と、route 用に対象 zone（richinosan.com）の Workers Routes の編集権限が必要です。
