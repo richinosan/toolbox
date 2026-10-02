@@ -1,0 +1,89 @@
+---
+interface Props {
+  name: string;
+  legend: string;
+  options: readonly (readonly [value: string, label: string])[];
+  value: string;
+}
+
+const { name, legend, options, value } = Astro.props;
+---
+
+<fieldset class="seg">
+  <legend class="seg__legend">{legend}</legend>
+  <div class="seg__options">
+    {options.map(([optionValue, label]) => (
+      <label class="seg__option">
+        <input
+          class="seg__input"
+          type="radio"
+          name={name}
+          value={optionValue}
+          checked={optionValue === value}
+        />
+        <span class="seg__label">{label}</span>
+      </label>
+    ))}
+  </div>
+</fieldset>
+
+<style>
+  .seg {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .seg__legend {
+    padding: 0;
+    margin-bottom: var(--space-2);
+    font-weight: 700;
+  }
+
+  .seg__options {
+    display: flex;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-radius: 10px;
+    background: var(--color-bg);
+  }
+
+  .seg__option {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ラジオ自体は隠し、ラベルをボタンのように見せる（キーボード操作とフォーカス表示は input が担う） */
+  .seg__input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .seg__label {
+    display: grid;
+    place-items: center;
+    min-height: 2.25rem;
+    padding-inline: var(--space-2);
+    border-radius: 8px;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
+  .seg__input:checked + .seg__label {
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  }
+
+  .seg__input:focus-visible + .seg__label {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+</style>

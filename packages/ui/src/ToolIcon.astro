@@ -1,6 +1,7 @@
 ---
 import type * as shared from "#shared";
 import CalendarIcon from "./icons/CalendarIcon.astro";
+import EmButtonsIcon from "./icons/EmButtonsIcon.astro";
 
 interface Props {
   name: shared.ToolIconName;
@@ -8,6 +9,7 @@ interface Props {
 
 const icons = {
   calendar: CalendarIcon,
+  "em-buttons": EmButtonsIcon,
 } satisfies Record<shared.ToolIconName, unknown>;
 
 const { name } = Astro.props;
