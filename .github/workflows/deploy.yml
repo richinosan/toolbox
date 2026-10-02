@@ -13,9 +13,10 @@ on:
         required: true
         type: string
 
-# デプロイは 1 本ずつ実行する（実行中のデプロイは途中で止めない）
+# タグごと（手動実行は app ごと）に group を分け、待機中の実行が別のデプロイに置き換えられて消えないようにする
+# （同じ group では待機できるのが 1 本だけで、新しい実行が入ると古い待機が取り消される）
 concurrency:
-  group: deploy
+  group: deploy-${{ inputs.app || github.ref }}
   cancel-in-progress: false
 
 permissions:
