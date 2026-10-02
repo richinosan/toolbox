@@ -100,3 +100,14 @@ run = 'cd "apps/$usage_app" && cf dev'
 description = "app をビルドして Cloudflare にデプロイ（例: mise run deploy calendar）"
 usage = 'arg "<app>" help="apps/ 配下の app 名"'
 run = 'cd "apps/$usage_app" && cf deploy'
+
+[tasks.deploy-all]
+description = "すべての app をビルドして Cloudflare にデプロイ（CI 用。CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID が必要）"
+run = '''
+mise run build --all
+for dir in apps/*/; do
+  [ -f "${dir}cloudflare.config.ts" ] || continue
+  # build 済みの Build Output をそのままアップロードする
+  (cd "$dir" && cf deploy --prebuilt)
+done
+'''
