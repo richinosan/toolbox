@@ -104,6 +104,16 @@ export const checkUrl = (raw: string): UrlCheck => {
       reason:
         "https:// から始まる URL を入力してください（mailto: と tel: も使えます）。",
     };
+  const invalid = {
+    ok: false,
+    reason: "URL の形式が正しくありません。",
+  } as const;
+  // http(s) は URL として解釈できて、ホスト名があるものだけを通す（https:// だけ、などを弾く）
+  if (/^https?:/i.test(url)) {
+    if (!URL.canParse(url) || new URL(url).hostname === "") return invalid;
+  } else if (/^(?:mailto|tel):/i.test(url) && /^[^:]+:\/*$/.test(url)) {
+    return invalid;
+  }
   return { ok: true, href: url };
 };
 
