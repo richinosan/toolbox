@@ -31,12 +31,16 @@ const icons = {
   description={tool.description}
   spec={{
     overview:
-      "画像の読み込み、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と JavaScript）で行います。テキストの既定のフォントは LINE Seed JP です。",
+      "画像の読み込み、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と JavaScript）で行います。テキストの既定のフォントは LINE Seed JP で、Web フォント（Fontsource）・端末のフォント・フォントファイルも使えます。保存するときは、フォントの無い端末でも同じ見た目で表示できるよう、文字の形（パス）も作品ファイルに入れます。",
     network:
-      "なし（開いた画像や入力した文字がサーバーへ送信されることはありません。PSD の書き出しに使うライブラリは、初めて PSD を書き出すときに同じサイトから読み込みます）",
+      "開いた画像や入力した文字がサーバーへ送信されることはありません。Web フォントを選んだときだけ、そのフォントのファイル（使う文字の範囲の分だけ）を jsDelivr（cdn.jsdelivr.net）の Fontsource から読み込み、フォントの名前で探したときだけ、フォントの一覧を Fontsource（api.fontsource.org）から読み込みます。PSD の書き出しと文字のパス化に使うライブラリは、使うときに同じサイトから読み込みます。",
     storage:
       "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。作品や開いた画像は、ブラウザ（localStorage・IndexedDB・Cookie）には保存しません。保存（Ctrl+S）すると、作品ファイル（.tbimg）として端末に保存します（対応ブラウザでは選んだファイルに上書き、それ以外のブラウザではダウンロード）。",
-    libraries: ["ag-psd（PSD の書き出し）"],
+    libraries: [
+      "ag-psd（PSD の書き出し）",
+      "fontkit（文字の形をパスにする）",
+      "Fontsource（Web フォント）",
+    ],
   }}
   tour={[
     {
@@ -57,7 +61,7 @@ const icons = {
     {
       target: "#props-panel",
       title: "設定",
-      body: "選んだレイヤーの文字・色・大きさと、カラーフィルターやガウスぼかしを変えます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
+      body: "選んだレイヤーの文字・フォント・色・大きさと、カラーフィルターやガウスぼかしを変えます。テキストは文字を選ぶと、その文字だけの書式を変えられます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
     },
     {
       target: "#file-tools",
@@ -200,6 +204,16 @@ const icons = {
             aria-label="キャンバス（ドラッグでレイヤーを移動、ハンドルで大きさを変更）"
           >
             <canvas id="view" class="stage__canvas"></canvas>
+            <div
+              id="stage-text"
+              class="rich stage-text"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-label="テキストを編集"
+              spellcheck="false"
+              hidden
+            ></div>
             <div id="empty" class="empty">
               <p class="empty__title">画像をドロップするか、選んでください</p>
               <div class="empty__actions">
@@ -379,53 +393,73 @@ const icons = {
               </label>
 
               <div class="fields" data-for="text">
-                <label class="field">
-                  <span class="field__label">テキスト</span>
-                  <textarea
-                    class="input input--text"
-                    data-prop="text"
-                    rows="3"
-                    maxlength="2000"
+                <div class="field">
+                  <span id="rich-label" class="field__label">
+                    テキスト
+                  </span>
+                  <div
+                    id="rich"
+                    class="input rich"
+                    contenteditable="true"
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-labelledby="rich-label"
+                    aria-describedby="rich-hint"
                     spellcheck="false"
-                  ></textarea>
-                </label>
+                  ></div>
+                  <p id="rich-hint" class="note">
+                    文字を選ぶと、その文字だけにフォント・大きさ・色・太字を適用します。選んでいないときはテキスト全体に適用します。キャンバスでダブルクリック（ダブルタップ）すると、その場で編集できます。
+                  </p>
+                </div>
+                <div class="field">
+                  <span class="field__label" id="font-label">
+                    フォント
+                  </span>
+                  <button
+                    id="font-button"
+                    class="input font-button"
+                    type="button"
+                    data-action="pick-font"
+                    aria-labelledby="font-label font-name"
+                    aria-haspopup="dialog"
+                  >
+                    <span id="font-name" class="font-button__name">
+                      LINE Seed JP
+                    </span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m7 10 5 5 5-5"></path>
+                    </svg>
+                  </button>
+                </div>
+                <p id="font-missing" class="note note--warn" hidden></p>
                 <div class="pair">
-                  <label class="field">
-                    <span class="field__label">フォント</span>
-                    <select class="input" data-prop="font">
-                      {model.fontOptions.map(([value, label]) => (
-                        <option value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </label>
                   <label class="field">
                     <span class="field__label">大きさ（px）</span>
                     <input
                       class="input"
                       type="number"
-                      data-prop="fontSize"
+                      data-char="size"
                       min="1"
                       max="2000"
                       step="1"
                       inputmode="decimal"
                     />
                   </label>
-                </div>
-                <div class="inline">
-                  <input
-                    class="swatch"
-                    type="color"
-                    data-prop="color"
-                    aria-label="文字の色"
-                  />
-                  <label class="check">
-                    <input type="checkbox" data-prop="bold" />
-                    <span>太字</span>
-                  </label>
-                  <label class="check">
-                    <input type="checkbox" data-prop="shadow" />
-                    <span>影</span>
-                  </label>
+                  <div class="field">
+                    <span class="field__label">色・太さ</span>
+                    <div class="inline">
+                      <input
+                        class="swatch"
+                        type="color"
+                        data-char="color"
+                        aria-label="文字の色"
+                      />
+                      <label class="check">
+                        <input type="checkbox" data-char="bold" />
+                        <span>太字</span>
+                      </label>
+                    </div>
+                  </div>
                 </div>
                 <fieldset class="seg">
                   <legend class="field__label">揃え</legend>
@@ -486,6 +520,60 @@ const icons = {
                     aria-label="縁取りの色"
                   />
                 </div>
+                <label class="check">
+                  <input type="checkbox" data-prop="shadow" />
+                  <span>影</span>
+                </label>
+                <div class="convert">
+                  <button
+                    class="button button--small"
+                    type="button"
+                    data-action="to-path"
+                  >
+                    パスに変換
+                  </button>
+                  <p class="note">
+                    文字の形の図形にします。文字は編集できなくなりますが、フォントの無い端末でも同じ形で表示できます。
+                  </p>
+                </div>
+              </div>
+
+              <div class="fields" data-for="path">
+                <div class="inline">
+                  <input
+                    class="swatch"
+                    type="color"
+                    data-path="fill"
+                    aria-label="塗りの色"
+                  />
+                  <span class="note">塗り（すべての文字）</span>
+                </div>
+                <div class="range">
+                  <label class="field__label" for="prop-pathStroke">
+                    縁取り
+                  </label>
+                  <output for="prop-pathStroke"></output>
+                  <input
+                    id="prop-pathStroke"
+                    class="range__input range__input--with-swatch"
+                    type="range"
+                    data-prop="strokeWidth"
+                    data-unit="px"
+                    min="0"
+                    max="40"
+                    step="0.5"
+                  />
+                  <input
+                    class="swatch swatch--small"
+                    type="color"
+                    data-prop="strokeColor"
+                    aria-label="縁取りの色"
+                  />
+                </div>
+                <label class="check">
+                  <input type="checkbox" data-prop="shadow" />
+                  <span>影</span>
+                </label>
               </div>
 
               <div class="fields" data-for="rect ellipse">
@@ -836,6 +924,105 @@ const icons = {
             </button>
             <button class="button button--primary" type="submit" value="save">
               書き出す
+            </button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog
+        id="font-dialog"
+        class="dialog dialog--wide"
+        aria-labelledby="font-title"
+      >
+        <form class="dialog__form" method="dialog">
+          <h2 id="font-title" class="dialog__title">
+            フォントを選ぶ
+          </h2>
+          <fieldset class="seg">
+            <legend class="visually-hidden">フォントの場所</legend>
+            <div class="seg__options">
+              {[
+                ["web", "Web フォント"],
+                ["local", "端末のフォント"],
+                ["file", "ファイル"],
+              ].map(([value, label], i) => (
+                <label class="seg__option">
+                  <input
+                    class="seg__input"
+                    type="radio"
+                    name="font-tab"
+                    value={value}
+                    checked={i === 0}
+                  />
+                  <span class="seg__label">{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div class="font-tab" data-tab="web">
+            <div class="font-search">
+              <input
+                id="font-search"
+                class="input"
+                type="search"
+                placeholder="名前で探す（例：Noto、Mincho）"
+                aria-label="フォントの名前で探す"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <label class="check">
+                <input id="font-japanese" type="checkbox" />
+                <span>日本語</span>
+              </label>
+            </div>
+            <p id="font-web-note" class="note" aria-live="polite"></p>
+            <ul id="font-list" class="font-list"></ul>
+          </div>
+
+          <div class="font-tab" data-tab="local" hidden>
+            <p class="note">
+              この端末に入っているフォントを使います。初めて使うときは、ブラウザが許可を確認します（Chrome・Edge
+              のパソコン版で使えます）。
+            </p>
+            <button id="font-local-load" class="button" type="button">
+              端末のフォントを読み込む
+            </button>
+            <input
+              id="font-local-search"
+              class="input"
+              type="search"
+              placeholder="名前で探す"
+              aria-label="端末のフォントの名前で探す"
+              autocomplete="off"
+              spellcheck="false"
+              hidden
+            />
+            <p id="font-local-note" class="note" aria-live="polite"></p>
+            <ul id="font-local-list" class="font-list"></ul>
+          </div>
+
+          <div class="font-tab" data-tab="file" hidden>
+            <p class="note">
+              フォントファイル（.ttf・.otf・.woff・.woff2）を読み込みます。ファイルはサーバーに送らず、この画面を開いている間だけ使います。
+            </p>
+            <button id="font-file-pick" class="button" type="button">
+              フォントファイルを選ぶ
+            </button>
+            <input
+              id="font-file-input"
+              type="file"
+              accept=".ttf,.otf,.woff,.woff2,.ttc,font/ttf,font/otf,font/woff,font/woff2"
+              multiple
+              hidden
+            />
+            <p id="font-file-note" class="note" aria-live="polite"></p>
+            <ul id="font-file-list" class="font-list"></ul>
+          </div>
+
+          <div class="dialog__actions">
+            <button class="button" type="submit">
+              閉じる
             </button>
           </div>
         </form>
@@ -1637,5 +1824,201 @@ const icons = {
     color: var(--color-text-muted);
     font-size: 0.8125rem;
     font-variant-numeric: tabular-nums;
+  }
+  /* ---- 文字ごとに書式を持つテキストの編集欄 ---- */
+  .rich {
+    overflow-wrap: normal;
+    white-space: pre;
+    cursor: text;
+  }
+
+  /* 行の高さは、行の中の文字（span）の大きさだけで決める */
+  .rich :global(div) {
+    font-size: 0;
+    line-height: 0;
+  }
+
+  .rich :global(span) {
+    -webkit-text-stroke: var(--stroke, 0);
+    paint-order: stroke fill;
+  }
+
+  .rich--shadow :global(span) {
+    text-shadow: 0.04em 0.06em 0.12em rgb(0 0 0 / 0.55);
+  }
+
+  #rich {
+    min-height: 4.5rem;
+    max-height: 14rem;
+    overflow: auto;
+    padding: var(--space-2);
+    background: #f4f5f7;
+  }
+
+  /* 白っぽい文字は暗い背景で見せる */
+  #rich.rich--dark {
+    background: #2b3036;
+  }
+
+  #rich:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
+  }
+
+  /* 編集欄から離れている間も、書式を変える文字の範囲を見せる */
+  :global(::highlight(tb-text-selection)) {
+    background-color: rgb(26 115 232 / 0.35);
+  }
+
+  .stage-text {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    min-width: 1px;
+    outline: 1px dashed #1a73e8;
+    outline-offset: 2px;
+    caret-color: #1a73e8;
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: auto;
+  }
+
+  .stage-text[hidden] {
+    display: none;
+  }
+
+  .font-button {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .font-button__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .font-button svg {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .note--warn {
+    padding: var(--space-2) var(--space-3);
+    border-radius: 8px;
+    background: light-dark(#fff4e5, #3a2a12);
+    color: light-dark(#7a4b00, #ffd59a);
+  }
+
+  .convert {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-1);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* ---- フォントを選ぶダイアログ ---- */
+  .dialog--wide {
+    width: min(32rem, calc(100vw - var(--gutter) * 2));
+  }
+
+  .font-tab {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .font-tab[hidden] {
+    display: none;
+  }
+
+  .font-tab .button {
+    justify-self: start;
+  }
+
+  .font-search {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .font-search .input {
+    flex: 1;
+  }
+
+  .font-list {
+    display: grid;
+    gap: 2px;
+    max-height: min(22rem, 45dvh);
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .font-list:empty {
+    display: none;
+  }
+
+  .font-list :global(.font-item) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--space-2);
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .font-list :global(.font-item:hover) {
+    background: var(--color-bg);
+  }
+
+  .font-list :global(.font-item[aria-pressed="true"]) {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+  }
+
+  .font-list :global(.font-item__name) {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .font-list :global(.font-item__meta) {
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
   }
 </style>
