@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+.cloudflare/
+.dev.vars*
+*.log
+.DS_Store
+mise.local.toml
+tmp/

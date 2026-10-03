@@ -1,0 +1,9 @@
+# package.json はルートの 1 つだけで、依存はすべてそこで管理する（app / package ごとに持たない）。
+# このファイルは pnpm の設定のためだけに置いている。
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+minimumReleaseAgeExclude:
+  - "@cloudflare/build-output-utils@0.8.4"
+  - "@cloudflare/config@0.22.0"
