@@ -47,3 +47,12 @@ mise run deploy <app> # app をビルドしてデプロイ
 
 1. `apps/<tool>/` を既存 app と同じ形で作成し、`base` / `outDir` / `cloudflare.config.ts` の route を `/<tool>` に合わせる
 2. `packages/shared/src/tools.ts` にツール定義を追加する（アイコンは `packages/ui/src/icons/` に SVG コンポーネントを追加し、`packages/ui/src/ToolIcon.astro` に対応を追加）
+
+## デプロイ（GitHub Actions）
+
+app 単位でデプロイします。`.github/workflows/deploy.yml` が [jdx/mise-action](https://github.com/jdx/mise-action) で mise.toml のツールを入れたうえで、`mise run install` → `mise run tests` → `mise run deploy <app>` の順に実行します（`main` への push では動きません）。
+
+- タグ `<app>/v*` を push するとその app をデプロイします（例: `git tag calendar/v1.0.0 && git push origin calendar/v1.0.0`）。
+- Actions の Run workflow（手動実行）で app 名を入力してもデプロイできます。
+- リポジトリの Secrets に `CF_ID`（Cloudflare のアカウント ID）と `CF_TOKEN`（API トークン）を設定します。workflow が cf CLI の読む `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` として渡します。
+- API トークンには Workers Scripts の編集権限と、route 用に対象 zone（richinosan.com）の Workers Routes の編集権限が必要です。
