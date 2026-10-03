@@ -41,6 +41,10 @@ const tourSteps: specTypes.TourStep[] = [
 const repositoryUrl = "https://github.com/richinosan/toolbox";
 const siteName = "Toolbox";
 const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
+// favicon はツールごと。ツール（base 付きの app）は自分の public/icon.svg（例: /calendar/icon.svg）、
+// ダッシュボードはサイト共通の /icons/icon.svg を使う。
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
 ---
 
 <!doctype html>
@@ -51,9 +55,9 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     <title>{pageTitle}</title>
     <assets.Font cssVariable="--font-line-seed-jp" />
     {description && <meta name="description" content={description} />}
-    <!-- PWA: manifest / アイコン / Service Worker はサイトのルート（dashboard の Worker）が配信する -->
+    <!-- PWA: manifest / ホーム画面アイコン / Service Worker はサイトのルート（dashboard の Worker）が配信する -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="icon" href={faviconHref} type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta
       name="theme-color"
