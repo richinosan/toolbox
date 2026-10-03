@@ -7,6 +7,7 @@
     "node": ">=22.12.0"
   },
   "imports": {
+    "#shared": "./packages/shared/src/index.ts",
     "#ui/*": "./packages/ui/src/*"
   },
   "dependencies": {

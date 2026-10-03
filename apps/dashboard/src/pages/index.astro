@@ -1,0 +1,58 @@
+---
+import * as shared from "#shared";
+import Layout from "#ui/Layout.astro";
+import ToolTile from "#ui/ToolTile.astro";
+---
+
+<Layout
+  title="Toolbox"
+  description="小さな Web ツールの一覧"
+  spec={{
+    overview:
+      "ツール一覧をビルド時に生成した静的ページです。ブラウザでの処理は、ページ遷移（ヘッダーとフッターを残したまま中身だけ切り替え）、チュートリアルの表示、オフライン用の Service Worker だけです。",
+    network: "なし（ページ自体とフォントの読み込みのみ）",
+    storage:
+      "オフラインでも開けるよう、ページ・スクリプト・フォント・アイコンをブラウザのキャッシュ（Cache Storage）に保存します。localStorage・Cookie は使いません。",
+    libraries: [],
+  }}
+  tour={[
+    {
+      target: ".tool-list li:first-child",
+      title: "ツールを開く",
+      body: "タイルを押すとそのツールを開きます。",
+    },
+  ]}
+>
+  <h1 class="page-title">ツール一覧</h1>
+  <ul class="tool-list">
+    {shared.tools.map((tool) => (
+      <li>
+        <ToolTile tool={tool} />
+      </li>
+    ))}
+  </ul>
+</Layout>
+
+<style>
+  .page-title {
+    font-size: 1.5rem;
+    margin-bottom: var(--space-6);
+  }
+
+  .tool-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr));
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* タイルは表示時に少しずつずらして跳ねて出る（ずらすのは先頭 12 個まで） */
+  @media (prefers-reduced-motion: no-preference) {
+    .tool-list li {
+      animation: bounce-in 0.4s ease-out backwards;
+      animation-delay: calc(min(sibling-index(), 12) * 30ms);
+    }
+  }
+</style>

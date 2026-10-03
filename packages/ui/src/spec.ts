@@ -9,3 +9,13 @@ export type TechSpec = {
   /** 使用している主なライブラリ */
   libraries: readonly string[];
 };
+
+/** チュートリアル（コーチマーク）の 1 ステップ */
+export type TourStep = {
+  /** 強調する要素の CSS セレクター（見つからないステップは飛ばす） */
+  target: string;
+  title: string;
+  body: string;
+  /** 対象が隠れているとき、先にクリックして表示させる要素の CSS セレクター（モードやタブの切り替えボタンなど） */
+  reveal?: string;
+};
