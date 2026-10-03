@@ -431,7 +431,7 @@ const initial = button.defaultSettings;
         output,
       );
       const anchor = shadow.querySelector("a");
-      if (pop && anchor) motion.bounce(anchor, "pop");
+      if (pop && anchor) motion.play(anchor, "pop");
 
       const ratio = button.worstContrast(settings);
       const ratioText = `${ratio.toFixed(1)}:1`;
@@ -532,7 +532,7 @@ const initial = button.defaultSettings;
     const showTooltip = (message: string) => {
       copyTooltip.textContent = message;
       copyTooltip.classList.add("copy__tooltip--visible");
-      motion.bounce(copyTooltip, "in");
+      motion.play(copyTooltip, "in");
       clearTimeout(timer);
       timer = setTimeout(() => {
         copyTooltip.classList.remove("copy__tooltip--visible");

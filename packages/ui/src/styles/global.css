@@ -97,34 +97,12 @@ a {
   }
 }
 
-/* ホバー時のバウンス。transform を使う要素とぶつからないよう translate / scale プロパティで動かす */
-@keyframes bounce-hop {
-  0%,
-  60%,
-  100% {
-    translate: 0 0;
-  }
-  35% {
-    translate: 0 -6px;
-  }
-  80% {
-    translate: 0 -2px;
-  }
-}
-
-@keyframes bounce-in {
-  0% {
+/* 表示時のフェードイン。跳ね返らせず、わずかに浮かび上がらせるだけにする
+   transform を使う要素とぶつからないよう translate / scale プロパティで動かす */
+@keyframes fade-in {
+  from {
     opacity: 0;
-    scale: 0.85;
-  }
-  55% {
-    opacity: 1;
-    scale: 1.04;
-  }
-  75% {
+    translate: 0 4px;
     scale: 0.98;
-  }
-  100% {
-    scale: 1;
   }
 }
