@@ -47,6 +47,7 @@ mise run deploy <app> # app をビルドしてデプロイ
 
 1. `apps/<tool>/` を既存 app と同じ形で作成し、`base` / `outDir` / `cloudflare.config.ts` の route を `/<tool>` に合わせる
 2. `packages/shared/src/tools.ts` にツール定義を追加する（アイコンは `packages/ui/src/icons/` に SVG コンポーネントを追加し、`packages/ui/src/ToolIcon.astro` に対応を追加）
+3. ブラウザのタブに出る favicon として `apps/<tool>/public/icon.svg` を置く（`/<tool>/icon.svg` として、そのツールの Worker が配信する。ダッシュボードは `/icons/icon.svg`）。あわせて `apps/dashboard/public/sw.js` の `PRECACHE` にも `/<tool>/icon.svg` を足す
 
 ## デプロイ（GitHub Actions）
 
