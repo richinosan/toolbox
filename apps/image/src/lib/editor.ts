@@ -269,7 +269,7 @@ export const mount = (root: HTMLElement) => {
     toast.textContent = message;
     toast.classList.toggle("toast--error", error);
     toast.classList.add("toast--visible");
-    motion.bounce(toast, "in");
+    motion.play(toast, "in");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(
       () => toast.classList.remove("toast--visible"),
