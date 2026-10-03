@@ -1,0 +1,35 @@
+---
+import type * as shared from "#shared";
+import CalendarIcon from "./icons/CalendarIcon.astro";
+
+interface Props {
+  name: shared.ToolIconName;
+}
+
+const icons = {
+  calendar: CalendarIcon,
+} satisfies Record<shared.ToolIconName, unknown>;
+
+const { name } = Astro.props;
+const Icon = icons[name];
+---
+
+<span class="tool-icon" aria-hidden="true">
+  <Icon />
+</span>
+
+<style>
+  /* 大きさは利用側で --tool-icon-size を指定して変える */
+  .tool-icon {
+    display: inline-block;
+    flex: none;
+    width: var(--tool-icon-size, 2.75rem);
+    height: var(--tool-icon-size, 2.75rem);
+  }
+
+  .tool-icon :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>

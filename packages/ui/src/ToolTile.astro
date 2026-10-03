@@ -1,0 +1,62 @@
+---
+import type * as shared from "#shared";
+import ToolIcon from "./ToolIcon.astro";
+
+interface Props {
+  tool: shared.ToolDefinition;
+}
+
+const { tool } = Astro.props;
+---
+
+<a class="card tool-tile" href={tool.href}>
+  <span class="tool-tile__icon">
+    <ToolIcon name={tool.icon} />
+  </span>
+  <span class="tool-tile__name">{tool.name}</span>
+</a>
+
+<style>
+  .tool-tile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    aspect-ratio: 1;
+    container-type: inline-size;
+    overflow: hidden;
+    padding: var(--space-3);
+    text-decoration: none;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+
+  .tool-tile:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .tool-tile:hover .tool-tile__icon {
+      animation: bounce-hop 0.5s ease-out;
+    }
+  }
+
+  .tool-tile__icon {
+    display: grid;
+    flex: 1;
+    place-items: center;
+    --tool-icon-size: 45cqi;
+  }
+
+  /* タイルの大きさに合わせて文字も縮める（ポップアップの小さいタイル用） */
+  .tool-tile__name {
+    overflow: hidden;
+    font-weight: 700;
+    font-size: clamp(0.8125rem, 10cqi, 1.125rem);
+    line-height: 1.4;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+</style>

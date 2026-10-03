@@ -1,8 +1,13 @@
 ---
 import * as assets from "astro:assets";
+import * as transitions from "astro:transitions";
+import * as shared from "#shared";
 import GitHubIcon from "./icons/GitHubIcon.astro";
+import GridIcon from "./icons/GridIcon.astro";
 import HelpIcon from "./icons/HelpIcon.astro";
 import type * as specTypes from "./spec";
+import ToolTile from "./ToolTile.astro";
+import Tour from "./Tour.astro";
 import "./styles/global.css";
 
 interface Props {
@@ -10,9 +15,29 @@ interface Props {
   description?: string;
   /** ？ボタンで表示する技術仕様（全ページ必須） */
   spec: specTypes.TechSpec;
+  /** チュートリアルでヘッダーより前に案内するページ固有のステップ */
+  tour?: readonly specTypes.TourStep[];
 }
 
-const { title, description, spec } = Astro.props;
+const { title, description, spec, tour = [] } = Astro.props;
+const tourSteps: specTypes.TourStep[] = [
+  ...tour,
+  {
+    target: "#tools-button",
+    title: "ツール一覧",
+    body: "ここから他のツールに移動できます。",
+  },
+  {
+    target: "#spec-button",
+    title: "技術仕様",
+    body: "通信や保存される情報など、このページの技術仕様を確認できます。チュートリアルもここから始められます。",
+  },
+  {
+    target: "#github-link",
+    title: "ソースコード",
+    body: "GitHub のリポジトリを開きます。",
+  },
+];
 const repositoryUrl = "https://github.com/richinosan/toolbox";
 const siteName = "Toolbox";
 const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
@@ -26,15 +51,42 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     <title>{pageTitle}</title>
     <assets.Font cssVariable="--font-line-seed-jp" />
     {description && <meta name="description" content={description} />}
+    <!-- PWA: manifest / アイコン / Service Worker はサイトのルート（dashboard の Worker）が配信する -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta
+      name="theme-color"
+      content="#ffffff"
+      media="(prefers-color-scheme: light)"
+    />
+    <meta
+      name="theme-color"
+      content="#1a1e24"
+      media="(prefers-color-scheme: dark)"
+    />
+    <transitions.ClientRouter />
   </head>
   <body>
-    <header class="site-header">
+    <!-- ヘッダーとフッターは ClientRouter のページ遷移でも入れ替えずに残す -->
+    <header class="site-header" transition:persist="site-header">
       <div class="container site-header__inner">
+        <button
+          id="tools-button"
+          class="icon-button"
+          type="button"
+          popovertarget="tools-popover"
+          aria-label="ツール一覧"
+          title="ツール一覧"
+        >
+          <GridIcon />
+        </button>
         <a class="site-header__brand" href="/">
           {siteName}
         </a>
         <div class="site-header__actions">
           <button
+            id="spec-button"
             class="icon-button"
             type="button"
             popovertarget="spec-popover"
@@ -44,6 +96,7 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
             <HelpIcon />
           </button>
           <a
+            id="github-link"
             class="icon-button"
             href={repositoryUrl}
             target="_blank"
@@ -56,6 +109,38 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
         </div>
       </div>
     </header>
+
+    <div
+      id="tools-popover"
+      class="popover popover--tools"
+      popover
+      aria-labelledby="tools-title"
+    >
+      <div class="popover__header">
+        <h2 id="tools-title" class="popover__title">
+          ツール一覧
+        </h2>
+        <button
+          class="icon-button"
+          type="button"
+          popovertarget="tools-popover"
+          popovertargetaction="hide"
+          aria-label="閉じる"
+        >
+          ×
+        </button>
+      </div>
+      <ul class="tools-menu">
+        {shared.tools.map((tool) => (
+          <li>
+            <ToolTile tool={tool} />
+          </li>
+        ))}
+      </ul>
+      <a class="tools-menu__all" href="/">
+        すべてのツールを見る
+      </a>
+    </div>
 
     <div id="spec-popover" class="popover" popover aria-labelledby="spec-title">
       <div class="popover__header">
@@ -72,6 +157,9 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
           ×
         </button>
       </div>
+      <button class="tour-start" type="button" data-tour-start>
+        チュートリアルを開始
+      </button>
       <dl class="spec">
         <dt>動作</dt>
         <dd>{spec.overview}</dd>
@@ -89,11 +177,42 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
         </dd>
       </dl>
     </div>
+    <Tour steps={tourSteps} />
     <main class="container site-main">
       <slot />
     </main>
+    <footer class="site-footer" transition:persist="site-footer">
+      <div class="container site-footer__inner">
+        <a href="/">{siteName}</a>
+      </div>
+    </footer>
   </body>
 </html>
+
+<script>
+  import * as motion from "./motion";
+  import * as singleton from "./singleton";
+
+  // ボタンやタイルは押したときに跳ねる。document に付けるので ClientRouter の遷移後もそのまま効く
+  singleton.once("press-bounce", () => {
+    document.addEventListener("click", (event) => {
+      const target =
+        event.target instanceof Element
+          ? event.target.closest(
+              "button:not(:disabled), .tool-tile, .icon-button",
+            )
+          : null;
+      if (target) motion.bounce(target, "press");
+    });
+  });
+
+  // オフラインでも開けるように Service Worker を登録する（本番ビルドのみ）
+  if (import.meta.env.PROD && "serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // 登録できなくてもページはそのまま使える
+    });
+  }
+</script>
 
 <style>
   .site-header {
@@ -114,13 +233,37 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
   }
 
   .site-header__brand {
+    margin-left: var(--space-2);
     font-weight: 700;
     font-size: 1.125rem;
     text-decoration: none;
   }
 
   .site-main {
+    flex: 1;
+    width: 100%;
     padding-block: var(--space-8);
+  }
+
+  .site-footer {
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .site-footer__inner {
+    display: flex;
+    gap: var(--space-4);
+    padding-block: var(--space-4);
+  }
+
+  .site-footer a {
+    text-decoration: none;
+  }
+
+  .site-footer a:hover {
+    color: var(--color-text);
+    text-decoration: underline;
   }
 
   .icon-button {
@@ -142,6 +285,25 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
   .icon-button:hover {
     background: var(--color-bg);
     color: var(--color-text);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .icon-button:hover :global(svg) {
+      animation: bounce-hop 0.5s ease-out;
+    }
+
+    /* ポップアップは開くたびに跳ねて出る */
+    .popover:popover-open {
+      animation: bounce-in 0.38s ease-out;
+    }
+
+    .popover--tools:popover-open {
+      transform-origin: top left;
+    }
+
+    .popover:not(.popover--tools):popover-open {
+      transform-origin: top center;
+    }
   }
 
   .icon-button :global(svg) {
@@ -166,15 +328,50 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
     background: rgb(0 0 0 / 0.3);
   }
 
+  /* ツールが多くてスクロールしても見出しと閉じるボタンは残す */
   .popover__header {
+    position: sticky;
+    /* sticky の基準は padding の内側なので、padding 分だけ上に貼り付ける */
+    top: calc(var(--space-6) * -1);
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: var(--space-4);
+    margin-top: calc(var(--space-6) * -1);
+    padding-block: var(--space-6) var(--space-4);
+    background: var(--color-surface);
   }
 
   .popover__title {
     font-size: 1.125rem;
+  }
+
+  /* ツール一覧はグリッドボタンの近く（左上）に出す */
+  .popover--tools {
+    inset: 3.5rem auto auto
+      max(var(--gutter), calc((100vw - var(--page-width)) / 2));
+    margin: 0;
+    width: min(32rem, calc(100vw - var(--gutter) * 2));
+  }
+
+  .popover--tools::backdrop {
+    background: transparent;
+  }
+
+  .tools-menu {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 104px), 1fr));
+    gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .tools-menu__all {
+    display: block;
+    margin-top: var(--space-3);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
   }
 
   .spec {
@@ -195,5 +392,18 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 
   .spec dd {
     margin: 0;
+  }
+
+  .tour-start {
+    width: 100%;
+    margin-bottom: var(--space-6);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--color-accent);
+    border-radius: 8px;
+    background: var(--color-accent-soft);
+    color: var(--color-text);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
   }
 </style>
