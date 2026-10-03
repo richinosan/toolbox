@@ -1,38 +1,35 @@
-// バウンスアニメーション。OS の「視差効果を減らす」設定が有効なときは何もしない
+// 控えめなアニメーション。跳ね返り（オーバーシュート）はせず、短い ease-out で落ち着かせる
+// OS の「視差効果を減らす」設定が有効なときは何もしない
 
 const keyframes = {
-  /** 出現時：少し大きくなってから落ち着く */
+  /** 出現時：わずかに下から浮かび上がるようにフェードイン */
   in: [
-    { opacity: 0, scale: 0.85 },
-    { opacity: 1, scale: 1.04, offset: 0.55 },
-    { scale: 0.98, offset: 0.75 },
-    { scale: 1 },
+    { opacity: 0, translate: "0 4px", scale: 0.98 },
+    { opacity: 1, translate: "0 0", scale: 1 },
   ],
-  /** 押したとき：へこんでから跳ね返る */
-  press: [
-    { scale: 1 },
-    { scale: 0.9, offset: 0.35 },
-    { scale: 1.06, offset: 0.7 },
-    { scale: 1 },
-  ],
-  /** 値が変わったとき：小さく跳ねる */
+  /** 押したとき：ほんの少し縮んで戻る */
+  press: [{ scale: 1 }, { scale: 0.97, offset: 0.4 }, { scale: 1 }],
+  /** 値が変わったとき：薄い状態から戻して変化を伝える */
   pop: [
-    { scale: 1 },
-    { scale: 1.12, offset: 0.4 },
-    { scale: 0.97, offset: 0.7 },
-    { scale: 1 },
+    { opacity: 0.4, translate: "0 2px" },
+    { opacity: 1, translate: "0 0" },
   ],
 } satisfies Record<string, Keyframe[]>;
 
-export type Bounce = keyof typeof keyframes;
+export type Motion = keyof typeof keyframes;
+
+const duration = { in: 180, press: 160, pop: 200 } satisfies Record<
+  Motion,
+  number
+>;
 
 const reducedMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export const bounce = (element: Element, kind: Bounce) => {
+export const play = (element: Element, kind: Motion) => {
   if (reducedMotion()) return;
   element.animate(keyframes[kind], {
-    duration: kind === "in" ? 380 : 340,
-    easing: "ease-out",
+    duration: duration[kind],
+    easing: "cubic-bezier(0.2, 0, 0, 1)",
   });
 };
