@@ -197,8 +197,8 @@ const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
   import * as motion from "./motion";
   import * as singleton from "./singleton";
 
-  // ボタンやタイルは押したときに跳ねる。document に付けるので ClientRouter の遷移後もそのまま効く
-  singleton.once("press-bounce", () => {
+  // ボタンやタイルは押したときにわずかに縮む。document に付けるので ClientRouter の遷移後もそのまま効く
+  singleton.once("press-feedback", () => {
     document.addEventListener("click", (event) => {
       const target =
         event.target instanceof Element
@@ -206,7 +206,7 @@ const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
               "button:not(:disabled), .tool-tile, .icon-button",
             )
           : null;
-      if (target) motion.bounce(target, "press");
+      if (target) motion.play(target, "press");
     });
   });
 
@@ -292,13 +292,17 @@ const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .icon-button:hover :global(svg) {
-      animation: bounce-hop 0.5s ease-out;
+    .icon-button :global(svg) {
+      transition: translate 0.15s ease-out;
     }
 
-    /* ポップアップは開くたびに跳ねて出る */
+    .icon-button:hover :global(svg) {
+      translate: 0 -1px;
+    }
+
+    /* ポップアップは開くたびにさっとフェードインする */
     .popover:popover-open {
-      animation: bounce-in 0.38s ease-out;
+      animation: fade-in 0.18s cubic-bezier(0.2, 0, 0, 1);
     }
 
     .popover--tools:popover-open {
