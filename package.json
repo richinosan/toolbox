@@ -1,0 +1,26 @@
+{
+  "name": "toolbox",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "imports": {
+    "#ui/*": "./packages/ui/src/*"
+  },
+  "dependencies": {
+    "@fontsource/line-seed-jp": "^5.3.1",
+    "astro": "^7.3.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@cloudflare/build-output-utils": "0.8.4",
+    "@cloudflare/config": "0.22.0",
+    "@types/node": "^26.6.3",
+    "oxlint": "^1.86.0",
+    "prettier": "^3.9.9",
+    "prettier-plugin-astro": "^1.1.0",
+    "typescript": "~6.0.3"
+  }
+}

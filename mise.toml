@@ -1,0 +1,102 @@
+[tools]
+ni = "30.6.0"
+node = "26.10.0"
+"npm:cf" = "1.0.0-beta.7"
+pnpm = "12.8.1"
+
+# コマンドはすべて mise task に集約する（`mise tasks` で一覧）。
+# 依存はルートの package.json だけで管理し、CLI（astro, tsc など）はルートの node_modules/.bin から使う。cf CLI は mise の npm:cf で入れる。
+# Cloudflare 操作は cf CLI を使う（wrangler は使わない）。Worker の設定は各 app の cloudflare.config.ts に書く。
+# astro build の最後に #ui/cloudflare.mjs が cf 用の Build Output（.cloudflare/output/）を書き出す。
+
+[env]
+_.path = ["{{config_root}}/node_modules/.bin"]
+
+[tasks.install]
+description = "依存パッケージをインストール（lockfile どおり）"
+run = "ni --frozen"
+
+[tasks.build]
+description = "app をビルド（例: mise run build --all / --dashboard / --calendar）"
+# --<app> は apps/ 配下のディレクトリ名から決まるので、ツールを足しても mise.toml は変えなくてよい
+usage = 'arg "[target]..." help="--all または --<app>（複数指定可。例: --dashboard --calendar）" var=#true'
+run = '''
+available=""
+for dir in apps/*/; do
+  [ -f "${dir}astro.config.mjs" ] || continue
+  available="$available $(basename "$dir")"
+done
+
+show_usage() {
+  echo "使い方: mise run build --all | --<app>..." >&2
+  echo "  --all" >&2
+  for app in $available; do echo "  --$app" >&2; done
+}
+
+selected=" "
+for target in $usage_target; do
+  case "$target" in
+    --all) selected=" $available " ;;
+    --*)
+      name="${target#--}"
+      case " $available " in
+        *" $name "*) selected="$selected$name " ;;
+        *) echo "不明な app です: $target" >&2; show_usage; exit 1 ;;
+      esac
+      ;;
+    *) echo "app は --<app> の形で指定してください: $target" >&2; show_usage; exit 1 ;;
+  esac
+done
+
+if [ "$selected" = " " ]; then
+  show_usage
+  exit 1
+fi
+
+for app in $available; do
+  case "$selected" in
+    *" $app "*) astro build --root "apps/$app" ;;
+  esac
+done
+'''
+
+[tasks.check]
+description = "型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
+run = '''
+for dir in apps/*/ packages/*/; do
+  [ -f "$dir/tsconfig.json" ] || continue
+  if find "$dir" -name "*.astro" -not -path "*/node_modules/*" -print -quit | grep -q .; then
+    astro check --root "$dir"
+  else
+    tsc --noEmit -p "$dir"
+  fi
+done
+'''
+
+[tasks.lint]
+description = "oxlint + 型チェック"
+depends = ["check"]
+run = "oxlint"
+
+[tasks.format]
+description = "Prettier で整形"
+run = "prettier --write ."
+
+[tasks."format-check"]
+description = "Prettier の整形チェック"
+run = "prettier --check ."
+
+[tasks.tests]
+description = "lint・型チェック・整形チェックをまとめて実行"
+alias = "test"
+depends = ["lint", "format-check"]
+
+[tasks.dev]
+description = "app を開発サーバーで起動（例: mise run dev calendar）"
+usage = 'arg "<app>" help="apps/ 配下の app 名"'
+run = 'cd "apps/$usage_app" && cf dev'
+
+[tasks.deploy]
+description = "app をビルドして Cloudflare にデプロイ（例: mise run deploy calendar）"
+usage = 'arg "<app>" help="apps/ 配下の app 名"'
+run = 'cd "apps/$usage_app" && cf deploy'
