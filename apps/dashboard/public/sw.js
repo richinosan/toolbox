@@ -10,6 +10,9 @@ const PRECACHE = [
   "/em-buttons",
   "/manifest.webmanifest",
   "/icons/icon.svg",
+  // ツールごとの favicon（各ツールの public/icon.svg）
+  "/calendar/icon.svg",
+  "/em-buttons/icon.svg",
 ];
 
 // 事前キャッシュ。ページの HTML だけでなく、そこから辿れる CSS・JS・フォントも一緒に保存する
