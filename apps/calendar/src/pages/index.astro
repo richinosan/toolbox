@@ -1,0 +1,721 @@
+---
+import * as shared from "#shared";
+import Layout from "#ui/Layout.astro";
+import ToolIcon from "#ui/ToolIcon.astro";
+
+const tool = shared.tools.find((t) => t.id === "calendar")!;
+---
+
+<Layout
+  title={tool.name}
+  description={tool.description}
+  spec={{
+    overview:
+      "入力された日付の解釈と曜日・Unix time の計算、複数行の整形は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
+    network: "なし（入力した日付がサーバーへ送信されることはありません）",
+    storage:
+      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。localStorage には、選んだ入力モード（「1件」か「複数行」）だけを保存します。入力した日付は保存しません。Cookie は使いません。",
+    libraries: ["luxon（日付の解釈と計算）"],
+  }}
+  tour={[
+    {
+      target: "#mode-switch",
+      title: "入力モード",
+      body: "「1件」は 1 つの日付の曜日と Unix time を、「複数行」は何行もの日付をまとめて整形します。",
+    },
+    {
+      target: "#date-text",
+      reveal: "#mode-single",
+      title: "日付を入力",
+      body: "2026-10-01、2026年10月1日、10/1、20261001 などの形式で入力できます。年や月を省略すると今年・今月として扱います。",
+    },
+    {
+      target: "#date-picker-button",
+      reveal: "#mode-single",
+      title: "カレンダーから選ぶ",
+      body: "カレンダーで日付を選ぶこともできます。テキスト入力と連動します。",
+    },
+    {
+      target: ".result",
+      reveal: "#mode-single",
+      title: "結果",
+      body: "入力した日付の曜日と Unix time（秒）が表示されます。",
+    },
+    {
+      target: "#multi-input",
+      reveal: "#mode-multi",
+      title: "複数行で入力",
+      body: "1 行に 1 つずつ日付を書きます。形式は行ごとに違っていても構いません。",
+    },
+    {
+      target: "#multi-output",
+      reveal: "#mode-multi",
+      title: "まとめて出力",
+      body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。右上のボタンで全部コピーできます。",
+    },
+  ]}
+>
+  <div class="page">
+    <div class="tool-header">
+      <ToolIcon name={tool.icon} />
+      <h1 class="tool-header__name">{tool.name}</h1>
+    </div>
+
+    <section class="card calendar">
+      <!-- 1 件ずつ調べるモードと、複数行をまとめて整形するモード -->
+      <div id="mode-switch" class="mode" role="group" aria-label="入力モード">
+        <button
+          id="mode-single"
+          class="mode__button"
+          type="button"
+          aria-pressed="true"
+        >
+          1件
+        </button>
+        <button
+          id="mode-multi"
+          class="mode__button"
+          type="button"
+          aria-pressed="false"
+        >
+          複数行
+        </button>
+      </div>
+
+      <div id="single-panel" class="panel">
+        <div class="field">
+          <label class="field__label" for="date-text">
+            日付
+          </label>
+          <div class="field__inputs">
+            <input
+              id="date-text"
+              class="field__input field__input--text"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              placeholder="2026-10-01, 10/1, 20261001 など"
+              aria-describedby="date-note"
+            />
+            <!-- ネイティブの date input はブラウザの言語設定で表記が変わる（mm/dd/yyyy など）ため、
+                 表示はサービスの言語設定に合わせたボタンにして、カレンダーは showPicker() で開く -->
+            <div class="picker">
+              <button
+                id="date-picker-button"
+                class="field__input picker__button"
+                type="button"
+                aria-label="カレンダーから選択"
+              >
+                <span id="date-picker-label" class="picker__label">
+                  yyyy/mm/dd
+                </span>
+                <svg
+                  class="picker__icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                  <path d="M3 10h18M8 3v4M16 3v4"></path>
+                </svg>
+              </button>
+              <input
+                id="date-picker"
+                class="picker__native"
+                type="date"
+                tabindex="-1"
+                aria-hidden="true"
+              />
+            </div>
+          </div>
+        </div>
+        <p id="date-note" class="note" aria-live="polite"></p>
+
+        <dl class="result" aria-live="polite">
+          <div class="result__row">
+            <dt>曜日</dt>
+            <dd id="weekday">—</dd>
+          </div>
+          <div class="result__row">
+            <dt>Unix time（秒）</dt>
+            <dd class="result__value">
+              <span id="unix-time" class="result__mono">
+                —
+              </span>
+              <span class="copy">
+                <button
+                  id="copy-unix-time"
+                  class="copy__button"
+                  type="button"
+                  aria-label="Unix time をコピー"
+                  aria-describedby="copy-tooltip"
+                  disabled
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+                    <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
+                  </svg>
+                </button>
+                <!-- レイアウトに影響しないよう、コピー結果はボタン上のツールチップで出す -->
+                <span
+                  id="copy-tooltip"
+                  class="copy__tooltip"
+                  role="status"
+                ></span>
+              </span>
+            </dd>
+          </div>
+        </dl>
+      </div>
+
+      <div id="multi-panel" class="panel" hidden>
+        <div class="field">
+          <label class="field__label" for="multi-input">
+            日付（1 行に 1 つ）
+          </label>
+          <textarea
+            id="multi-input"
+            class="field__input multi__textarea"
+            rows="6"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder={"2026-10-01\n10/2\n2026年10月3日"}
+          ></textarea>
+        </div>
+        <div class="field">
+          <div class="multi__head">
+            <label class="field__label" for="multi-output">
+              出力（yyyy年mm月dd日(曜)）
+            </label>
+            <span class="copy">
+              <button
+                id="copy-multi"
+                class="copy__button"
+                type="button"
+                aria-label="出力をすべてコピー"
+                aria-describedby="copy-multi-tooltip"
+                disabled
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+                  <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
+                </svg>
+              </button>
+              <span
+                id="copy-multi-tooltip"
+                class="copy__tooltip"
+                role="status"
+              ></span>
+            </span>
+          </div>
+          <textarea
+            id="multi-output"
+            class="field__input multi__textarea"
+            rows="6"
+            readonly
+            spellcheck="false"
+          ></textarea>
+        </div>
+        <p id="multi-note" class="note" aria-live="polite"></p>
+      </div>
+    </section>
+  </div>
+</Layout>
+
+<script>
+  import * as luxon from "luxon";
+  import * as motion from "#ui/motion.ts";
+  import * as date from "../lib/date";
+
+  // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
+  const init = () => {
+    const text = document.querySelector<HTMLInputElement>("#date-text");
+    // ClientRouter で他のページから遷移したときも初期化する（カレンダー以外のページでは何もしない）
+    if (!text) return;
+    const picker = document.querySelector<HTMLInputElement>("#date-picker")!;
+    const pickerButton = document.querySelector<HTMLButtonElement>(
+      "#date-picker-button",
+    )!;
+    const pickerLabel =
+      document.querySelector<HTMLElement>("#date-picker-label")!;
+    const note = document.querySelector<HTMLElement>("#date-note")!;
+    const weekday = document.querySelector<HTMLElement>("#weekday")!;
+    const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
+    const copyButton =
+      document.querySelector<HTMLButtonElement>("#copy-unix-time")!;
+    const copyTooltip = document.querySelector<HTMLElement>("#copy-tooltip")!;
+
+    // 日付の表記はブラウザではなくサービスの言語設定（<html lang>）に合わせる。ja なら yyyy/mm/dd
+    const dateFormat = new Intl.DateTimeFormat(document.documentElement.lang, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: "UTC",
+    });
+    const datePlaceholder = dateFormat
+      .formatToParts(new Date(0))
+      .map((part) =>
+        part.type === "year"
+          ? "yyyy"
+          : part.type === "month"
+            ? "mm"
+            : part.type === "day"
+              ? "dd"
+              : part.value,
+      )
+      .join("");
+    const formatDate = (value: luxon.DateTime) => {
+      const utc = new Date(0);
+      // Date.UTC は 0〜99 年を 1900 年代にずらすので setUTCFullYear で組み立てる
+      utc.setUTCFullYear(value.year, value.month - 1, value.day);
+      // 年は 4 桁に揃える（Intl は 50 年を "50" と出すため）
+      return dateFormat
+        .formatToParts(utc)
+        .map((part) =>
+          part.type === "year" ? part.value.padStart(4, "0") : part.value,
+        )
+        .join("");
+    };
+
+    let initialised = false;
+    const hint = `日付のみの場合は ${date.TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
+
+    const render = () => {
+      const info = date.parseDate(text.value);
+      const nextWeekday = info?.weekday ?? "—";
+      const nextUnixTime = info ? String(info.unixTime) : "—";
+      // 結果が変わったときだけ跳ねさせる（初期表示では動かさない）
+      if (initialised && weekday.textContent !== nextWeekday)
+        motion.bounce(weekday, "pop");
+      if (initialised && unixTime.textContent !== nextUnixTime)
+        motion.bounce(unixTime, "pop");
+      weekday.textContent = nextWeekday;
+      unixTime.textContent = nextUnixTime;
+      copyButton.disabled = !info;
+      picker.value = info?.dateTime.toISODate() ?? "";
+      pickerLabel.textContent = info
+        ? formatDate(info.dateTime)
+        : datePlaceholder;
+      pickerLabel.classList.toggle("picker__label--empty", !info);
+      note.classList.toggle("note--error", !info && text.value.trim() !== "");
+      if (info) {
+        note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${date.TIME_ZONE_LABEL}）として計算しています。`;
+      } else {
+        note.textContent = text.value.trim()
+          ? "日付として解釈できません。"
+          : hint;
+      }
+    };
+
+    text.addEventListener("input", render);
+    // コピー結果はレイアウトを動かさないよう、ボタン上のツールチップで出す
+    const createTooltip = (tooltip: HTMLElement) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return (message: string) => {
+        tooltip.textContent = message;
+        tooltip.classList.add("copy__tooltip--visible");
+        motion.bounce(tooltip, "in");
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          tooltip.classList.remove("copy__tooltip--visible");
+        }, 1500);
+      };
+    };
+    const showTooltip = createTooltip(copyTooltip);
+
+    copyButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(unixTime.textContent ?? "");
+        showTooltip("コピーしました");
+      } catch {
+        // クリップボードが使えない環境では値を選択状態にして手動コピーに任せる
+        getSelection()?.selectAllChildren(unixTime);
+        showTooltip("選択しました");
+      }
+    });
+
+    pickerButton.addEventListener("click", () => {
+      try {
+        picker.showPicker();
+      } catch {
+        // showPicker() に未対応のブラウザではネイティブ input をクリックして開く
+        picker.click();
+      }
+    });
+    picker.addEventListener("input", () => {
+      text.value = picker.value;
+      render();
+    });
+
+    // 複数行モード：入力と同じ行に「yyyy年mm月dd日(曜)」で出力する
+    const modeButtons = {
+      single: document.querySelector<HTMLButtonElement>("#mode-single")!,
+      multi: document.querySelector<HTMLButtonElement>("#mode-multi")!,
+    };
+    const panels = {
+      single: document.querySelector<HTMLElement>("#single-panel")!,
+      multi: document.querySelector<HTMLElement>("#multi-panel")!,
+    };
+    const multiInput =
+      document.querySelector<HTMLTextAreaElement>("#multi-input")!;
+    const multiOutput =
+      document.querySelector<HTMLTextAreaElement>("#multi-output")!;
+    const multiNote = document.querySelector<HTMLElement>("#multi-note")!;
+    const copyMulti = document.querySelector<HTMLButtonElement>("#copy-multi")!;
+    const showMultiTooltip = createTooltip(
+      document.querySelector<HTMLElement>("#copy-multi-tooltip")!,
+    );
+
+    // 選んだモードだけを localStorage に覚えておく（入力した日付は保存しない）
+    const modeKey = "toolbox:calendar:mode";
+    type Mode = "single" | "multi";
+    const readMode = (): Mode => {
+      try {
+        return localStorage.getItem(modeKey) === "multi" ? "multi" : "single";
+      } catch {
+        // localStorage が使えない環境では毎回「1件」から始める
+        return "single";
+      }
+    };
+    const saveMode = (mode: Mode) => {
+      try {
+        localStorage.setItem(modeKey, mode);
+      } catch {
+        // 保存できなくても、そのまま使える
+      }
+    };
+    const setMode = (mode: Mode) => {
+      for (const key of ["single", "multi"] as const) {
+        modeButtons[key].setAttribute("aria-pressed", String(key === mode));
+        panels[key].hidden = key !== mode;
+      }
+    };
+    for (const mode of ["single", "multi"] as const) {
+      modeButtons[mode].addEventListener("click", (event) => {
+        setMode(mode);
+        // チュートリアルが表示のために押した場合（isTrusted が false）は、選択として覚えない
+        if (!event.isTrusted) return;
+        saveMode(mode);
+        if (mode === "multi") multiInput.focus();
+      });
+    }
+    setMode(readMode());
+
+    const renderMulti = () => {
+      const result = date.formatLines(multiInput.value);
+      multiOutput.value = result.output;
+      copyMulti.disabled =
+        result.parsedCount === 0 && result.invalidLines.length === 0;
+      const invalid = result.invalidLines.length > 0;
+      multiNote.classList.toggle("note--error", invalid);
+      if (invalid) {
+        multiNote.textContent = `${result.invalidLines.join("、")} 行目を日付として解釈できません。`;
+      } else if (result.parsedCount > 0) {
+        multiNote.textContent = `${result.parsedCount} 件を変換しました。`;
+      } else {
+        multiNote.textContent = `1 行に 1 つずつ日付を入力してください。日付のみの入力は ${date.TIME_ZONE_LABEL} として扱います。`;
+      }
+    };
+    multiInput.addEventListener("input", renderMulti);
+    copyMulti.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(multiOutput.value);
+        showMultiTooltip("コピーしました");
+      } catch {
+        // クリップボードが使えない環境では出力を選択状態にして手動コピーに任せる
+        multiOutput.select();
+        showMultiTooltip("選択しました");
+      }
+    });
+    renderMulti();
+
+    if (!text.value)
+      text.value =
+        luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate() ?? "";
+    render();
+    initialised = true;
+  };
+  document.addEventListener("astro:page-load", init);
+</script>
+
+<style>
+  .tool-header {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    margin-bottom: var(--space-6);
+  }
+
+  .tool-header__name {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  /* ヘッダーの下は中央寄せの 1 カラムにする（左だけに寄って右が空かないように） */
+  .page {
+    width: 100%;
+    max-width: 520px;
+    margin-inline: auto;
+  }
+
+  .mode {
+    display: flex;
+    gap: var(--space-1);
+    margin-bottom: var(--space-4);
+    padding: var(--space-1);
+    border-radius: 10px;
+    background: var(--color-bg);
+  }
+
+  .mode__button {
+    flex: 1;
+    min-height: 2.25rem;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .mode__button[aria-pressed="true"] {
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  }
+
+  .panel {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .panel[hidden] {
+    display: none;
+  }
+
+  .multi__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  /* 右端のボタンのツールチップは、狭い画面で画面外に出ないよう右揃えにする */
+  .multi__head .copy__tooltip {
+    right: 0;
+    left: auto;
+    transform: translate(0, 4px);
+  }
+
+  .multi__head .copy__tooltip--visible {
+    transform: translate(0, 0);
+  }
+
+  .multi__textarea {
+    min-height: 9rem;
+    resize: vertical;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.6;
+  }
+
+  .field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .field__label {
+    font-weight: 700;
+  }
+
+  .field__inputs {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .field__input {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: inherit;
+    font: inherit;
+  }
+
+  .field__input--text {
+    flex: 1 1 12rem;
+    width: auto;
+    min-width: 0;
+  }
+
+  .picker {
+    position: relative;
+    flex: 0 1 11rem;
+    min-width: 0;
+  }
+
+  .picker__button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+  }
+
+  .picker__label--empty {
+    color: var(--color-text-muted);
+  }
+
+  .picker__icon {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-text-muted);
+  }
+
+  /* showPicker() の位置合わせ用に残し、見た目と操作はボタンに任せる */
+  .picker__native {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .note {
+    margin-top: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .note--error {
+    color: light-dark(#c5221f, #f28b82);
+  }
+
+  .result {
+    display: grid;
+    gap: var(--space-4);
+    margin: var(--space-6) 0 0;
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .result__row dt {
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .result__row dd {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .result__value {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .result__mono {
+    min-width: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .copy {
+    position: relative;
+    flex: none;
+  }
+
+  .copy__button {
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+
+  .copy__button:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-text);
+  }
+
+  .copy__button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .copy__button svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .copy__tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    padding: var(--space-1) var(--space-2);
+    border-radius: 6px;
+    background: var(--color-text);
+    color: var(--color-surface);
+    font-size: 0.75rem;
+    font-weight: 400;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 4px);
+    transition:
+      opacity 0.15s,
+      transform 0.15s;
+  }
+
+  /* 結果が変わったときに跳ねさせるので、左端を基準に拡大する */
+  #weekday,
+  #unix-time {
+    display: inline-block;
+    transform-origin: left center;
+  }
+
+  .copy__tooltip--visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .copy__tooltip {
+      transition: none;
+    }
+  }
+</style>
