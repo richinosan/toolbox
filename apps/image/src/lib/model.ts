@@ -1,0 +1,251 @@
+// IMAGE のドキュメント（キャンバスとレイヤー）のデータ構造。
+// 座標・大きさはすべてドキュメントのピクセル単位（整数）で持つ。
+
+/** 一度に扱えるキャンバスの最大面積（iOS Safari の canvas の上限 16,777,216px に合わせる） */
+export const MAX_AREA = 4096 * 4096;
+/** キャンバスの 1 辺の最大長 */
+export const MAX_SIDE = 8192;
+
+export type FilterPreset =
+  "none" | "mono" | "sepia" | "invert" | "vivid" | "warm" | "cool" | "fade";
+
+export const filterPresets: readonly (readonly [FilterPreset, string])[] = [
+  ["none", "なし"],
+  ["mono", "モノクロ"],
+  ["sepia", "セピア"],
+  ["vivid", "ビビッド"],
+  ["warm", "暖色"],
+  ["cool", "寒色"],
+  ["fade", "フェード"],
+  ["invert", "反転"],
+];
+
+export type Filters = {
+  preset: FilterPreset;
+  /** -100〜100（0 で変化なし） */
+  brightness: number;
+  /** -100〜100 */
+  contrast: number;
+  /** -100〜100 */
+  saturation: number;
+  /** -180〜180（度） */
+  hue: number;
+  /** 色かぶせの色（明るさを保ったまま、この色味に寄せる） */
+  tint: string;
+  /** 色かぶせの強さ 0〜100 */
+  tintAmount: number;
+  /** ガウスぼかしの半径（標準偏差・px）0〜100 */
+  blur: number;
+};
+
+export const defaultFilters: Filters = {
+  preset: "none",
+  brightness: 0,
+  contrast: 0,
+  saturation: 0,
+  hue: 0,
+  tint: "#ff8a00",
+  tintAmount: 0,
+  blur: 0,
+};
+
+type LayerBase = {
+  id: string;
+  name: string;
+  visible: boolean;
+  /** 0〜100 */
+  opacity: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  filters: Filters;
+};
+
+export type ImageLayer = LayerBase & {
+  type: "image";
+  /** Assets のキー */
+  asset: string;
+};
+
+export type ShapeLayer = LayerBase & {
+  type: "rect" | "ellipse";
+  fill: string;
+  fillEnabled: boolean;
+  stroke: string;
+  strokeWidth: number;
+  /** 角の丸さ（四角のみ） */
+  radius: number;
+};
+
+export type FontKey = "line-seed" | "gothic" | "mincho";
+
+export const fontOptions: readonly (readonly [FontKey, string])[] = [
+  ["line-seed", "LINE Seed JP"],
+  ["gothic", "ゴシック体"],
+  ["mincho", "明朝体"],
+];
+
+export type TextAlign = "left" | "center" | "right";
+
+export type TextLayer = LayerBase & {
+  type: "text";
+  text: string;
+  font: FontKey;
+  fontSize: number;
+  bold: boolean;
+  color: string;
+  align: TextAlign;
+  /** 行の高さ（文字の大きさに対する倍率 ×100） */
+  lineHeight: number;
+  strokeColor: string;
+  /** 縁取りの太さ（px） */
+  strokeWidth: number;
+  shadow: boolean;
+};
+
+export type Layer = ImageLayer | ShapeLayer | TextLayer;
+export type LayerType = Layer["type"];
+
+export type Doc = {
+  name: string;
+  width: number;
+  height: number;
+  /** 背景色。null は透明 */
+  background: string | null;
+  /** 下から上の順 */
+  layers: Layer[];
+};
+
+export type Asset = {
+  blob: Blob;
+  image: ImageBitmap;
+};
+
+export type Assets = Map<string, Asset>;
+
+export const layerTypeLabels: Record<LayerType, string> = {
+  image: "画像",
+  rect: "四角",
+  ellipse: "丸",
+  text: "テキスト",
+};
+
+export const newId = () =>
+  typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+const base = (
+  doc: Doc,
+  name: string,
+  width: number,
+  height: number,
+): LayerBase => ({
+  id: newId(),
+  name,
+  visible: true,
+  opacity: 100,
+  x: Math.round((doc.width - width) / 2),
+  y: Math.round((doc.height - height) / 2),
+  width,
+  height,
+  filters: { ...defaultFilters },
+});
+
+/** 同じ種類のレイヤーの数から「テキスト 2」のような名前を付ける */
+const nextName = (doc: Doc, type: LayerType) => {
+  const label = layerTypeLabels[type];
+  const count = doc.layers.filter((layer) => layer.type === type).length;
+  return count === 0 ? label : `${label} ${count + 1}`;
+};
+
+export const createShape = (doc: Doc, type: "rect" | "ellipse"): ShapeLayer => {
+  const size = Math.max(16, Math.round(Math.min(doc.width, doc.height) * 0.3));
+  return {
+    ...base(doc, nextName(doc, type), size, size),
+    type,
+    fill: type === "rect" ? "#06c755" : "#1a73e8",
+    fillEnabled: true,
+    stroke: "#ffffff",
+    strokeWidth: 0,
+    radius: 0,
+  };
+};
+
+export const createText = (doc: Doc): TextLayer => {
+  const fontSize = Math.max(
+    12,
+    Math.round(Math.min(doc.width, doc.height) / 10),
+  );
+  return {
+    // 大きさは文字から決まるので、描画時に measure した値で上書きする
+    ...base(doc, nextName(doc, "text"), fontSize * 4, fontSize),
+    type: "text",
+    text: "テキスト",
+    font: "line-seed",
+    fontSize,
+    bold: true,
+    color: "#ffffff",
+    align: "center",
+    lineHeight: 130,
+    strokeColor: "#1b1f24",
+    strokeWidth: Math.max(1, Math.round(fontSize / 12)),
+    shadow: false,
+  };
+};
+
+export const createImage = (
+  doc: Doc,
+  asset: string,
+  imageWidth: number,
+  imageHeight: number,
+  name: string,
+): ImageLayer => {
+  // キャンバスに収まる大きさまで縮める（拡大はしない）
+  const scale = Math.min(1, doc.width / imageWidth, doc.height / imageHeight);
+  const width = Math.max(1, Math.round(imageWidth * scale));
+  const height = Math.max(1, Math.round(imageHeight * scale));
+  return {
+    ...base(doc, name || nextName(doc, "image"), width, height),
+    type: "image",
+    asset,
+  };
+};
+
+export const duplicateLayer = (layer: Layer): Layer => ({
+  ...structuredClone(layer),
+  id: newId(),
+  name: `${layer.name} のコピー`,
+  x: layer.x + 16,
+  y: layer.y + 16,
+});
+
+/** キャンバスの大きさを上限内に収める（縦横比は保つ） */
+export const fitSize = (width: number, height: number) => {
+  const scale = Math.min(
+    1,
+    MAX_SIDE / width,
+    MAX_SIDE / height,
+    Math.sqrt(MAX_AREA / (width * height)),
+  );
+  return {
+    width: Math.max(1, Math.floor(width * scale)),
+    height: Math.max(1, Math.floor(height * scale)),
+    scaled: scale < 1,
+  };
+};
+
+export const hasFilters = (filters: Filters) =>
+  filters.preset !== "none" ||
+  filters.brightness !== 0 ||
+  filters.contrast !== 0 ||
+  filters.saturation !== 0 ||
+  filters.hue !== 0 ||
+  filters.tintAmount !== 0 ||
+  filters.blur !== 0;
+
+export const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+export const isHex = (value: string) => /^#[0-9a-f]{6}$/i.test(value);

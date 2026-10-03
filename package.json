@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fontsource/line-seed-jp": "^5.3.1",
+    "ag-psd": "^31.0.2",
     "astro": "^7.3.5",
     "luxon": "^3.7.2"
   },
