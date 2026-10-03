@@ -121,8 +121,8 @@ const { steps } = Astro.props;
       document.querySelector<HTMLElement>(current.step.reveal)?.click();
     current.element.scrollIntoView({ block: "center", behavior: "instant" });
     place();
-    // ステップが変わるたびに吹き出しを跳ねさせる
-    motion.bounce(part(".tour__bubble"), "in");
+    // ステップが変わるたびに吹き出しをさっとフェードインさせる
+    motion.play(part(".tour__bubble"), "in");
     next.focus();
   };
 

@@ -48,11 +48,11 @@ import ToolTile from "#ui/ToolTile.astro";
     list-style: none;
   }
 
-  /* タイルは表示時に少しずつずらして跳ねて出る（ずらすのは先頭 12 個まで） */
+  /* タイルは表示時に少しずつずらしてフェードインする（ずらすのは先頭 12 個まで） */
   @media (prefers-reduced-motion: no-preference) {
     .tool-list li {
-      animation: bounce-in 0.4s ease-out backwards;
-      animation-delay: calc(min(sibling-index(), 12) * 30ms);
+      animation: fade-in 0.24s cubic-bezier(0.2, 0, 0, 1) backwards;
+      animation-delay: calc(min(sibling-index(), 12) * 20ms);
     }
   }
 </style>

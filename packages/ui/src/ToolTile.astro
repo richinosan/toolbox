@@ -37,8 +37,12 @@ const { tool } = Astro.props;
   }
 
   @media (prefers-reduced-motion: no-preference) {
+    .tool-tile__icon {
+      transition: translate 0.15s ease-out;
+    }
+
     .tool-tile:hover .tool-tile__icon {
-      animation: bounce-hop 0.5s ease-out;
+      translate: 0 -2px;
     }
   }
 

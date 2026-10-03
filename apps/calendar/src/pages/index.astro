@@ -303,11 +303,11 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       const info = date.parseDate(text.value);
       const nextWeekday = info?.weekday ?? "—";
       const nextUnixTime = info ? String(info.unixTime) : "—";
-      // 結果が変わったときだけ跳ねさせる（初期表示では動かさない）
+      // 結果が変わったときだけ軽く動かす（初期表示では動かさない）
       if (initialised && weekday.textContent !== nextWeekday)
-        motion.bounce(weekday, "pop");
+        motion.play(weekday, "pop");
       if (initialised && unixTime.textContent !== nextUnixTime)
-        motion.bounce(unixTime, "pop");
+        motion.play(unixTime, "pop");
       weekday.textContent = nextWeekday;
       unixTime.textContent = nextUnixTime;
       copyButton.disabled = !info;
@@ -333,7 +333,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       return (message: string) => {
         tooltip.textContent = message;
         tooltip.classList.add("copy__tooltip--visible");
-        motion.bounce(tooltip, "in");
+        motion.play(tooltip, "in");
         clearTimeout(timer);
         timer = setTimeout(() => {
           tooltip.classList.remove("copy__tooltip--visible");
@@ -701,11 +701,10 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       transform 0.15s;
   }
 
-  /* 結果が変わったときに跳ねさせるので、左端を基準に拡大する */
+  /* 結果が変わったときに軽く動かすので、インラインブロックにする */
   #weekday,
   #unix-time {
     display: inline-block;
-    transform-origin: left center;
   }
 
   .copy__tooltip--visible {
