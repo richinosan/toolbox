@@ -11,6 +11,7 @@ toolbox.richinosan.com
 apps/
   dashboard/   # /           ツール一覧（Worker: toolbox-dashboard）
   calendar/    # /calendar   日付 → 曜日・Unix time（Worker: toolbox-calendar）
+  image/       # /image      画像に文字・図形をレイヤーで重ねる（Worker: toolbox-image）
 packages/
   shared/      # ツール定義（tools.ts）
   ui/          # 共通レイアウト・アイコン・グローバル CSS（LINE Seed JP）
