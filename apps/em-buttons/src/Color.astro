@@ -1,0 +1,81 @@
+---
+interface Props {
+  name: string;
+  label: string;
+  value: string;
+}
+
+const { name, label, value } = Astro.props;
+---
+
+<div class="color">
+  <label class="color__label" for={name}>
+    {label}
+  </label>
+  <div class="color__inputs">
+    <input
+      id={name}
+      class="color__picker"
+      type="color"
+      name={name}
+      value={value}
+    />
+    <input
+      class="color__hex"
+      type="text"
+      data-hex-for={name}
+      value={value}
+      maxlength="7"
+      spellcheck="false"
+      autocomplete="off"
+      autocapitalize="off"
+      aria-label={`${label}（16進数）`}
+    />
+  </div>
+</div>
+
+<style>
+  .color {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .color__label {
+    font-weight: 700;
+  }
+
+  .color__inputs {
+    display: flex;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .color__picker {
+    flex: none;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    cursor: pointer;
+  }
+
+  .color__hex {
+    flex: 1;
+    min-width: 0;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: inherit;
+    font: inherit;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .color__hex[aria-invalid="true"] {
+    border-color: light-dark(#c5221f, #f28b82);
+  }
+</style>

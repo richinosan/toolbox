@@ -1,0 +1,59 @@
+name: Deploy
+
+# app 単位でデプロイする。
+#   タグ:     <app>/v* を push（例: git tag calendar/v1.0.0 && git push origin calendar/v1.0.0）
+#   手動実行: Actions の Run workflow で app 名を入力
+on:
+  push:
+    tags: ["*/v*"]
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "デプロイする app（apps/ 配下のディレクトリ名。例: calendar）"
+        required: true
+        type: string
+
+# タグごと（手動実行は app ごと）に group を分け、待機中の実行が別のデプロイに置き換えられて消えないようにする
+# （同じ group では待機できるのが 1 本だけで、新しい実行が入ると古い待機が取り消される）
+concurrency:
+  group: deploy-${{ inputs.app || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # タグ名（calendar/v1.0.0 → calendar）または入力から app を決める
+      - name: Resolve app
+        id: app
+        env:
+          INPUT_APP: ${{ inputs.app }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then app="${REF_NAME%%/*}"; else app="$INPUT_APP"; fi
+          if [ ! -f "apps/$app/cloudflare.config.ts" ]; then
+            echo "::error::apps/$app/cloudflare.config.ts がありません（app: $app）"
+            exit 1
+          fi
+          echo "name=$app" >> "$GITHUB_OUTPUT"
+
+      # mise.toml に固定した node / pnpm / ni / cf を入れる
+      - uses: jdx/mise-action@v5
+
+      - run: mise run install
+      - run: mise run tests
+
+      # secrets.CF_ID はアカウント ID、secrets.CF_TOKEN は API トークン。cf CLI が読む環境変数名に渡す
+      - name: Deploy to Cloudflare Workers
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_TOKEN }}
+          APP: ${{ steps.app.outputs.name }}
+        run: mise run deploy "$APP"
