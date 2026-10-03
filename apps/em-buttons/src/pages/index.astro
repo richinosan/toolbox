@@ -1,0 +1,862 @@
+---
+import * as shared from "#shared";
+import Layout from "#ui/Layout.astro";
+import ToolIcon from "#ui/ToolIcon.astro";
+import Color from "../Color.astro";
+import * as button from "../lib/button";
+import Segmented from "../Segmented.astro";
+
+const tool = shared.tools.find((t) => t.id === "em-buttons")!;
+const initial = button.defaultSettings;
+---
+
+<Layout
+  title={tool.name}
+  description={tool.description}
+  spec={{
+    overview:
+      "ボタンの見た目の設定からコード（HTML と CSS）を作る処理と、プレビューの表示は、すべてブラウザ内（JavaScript）で行います。コードは貼り付け先のサイトの文字に合わせるため font-family: inherit にしており、外部の画像・スクリプト・フォントには依存しません。",
+    network:
+      "なし（入力したラベルや URL がサーバーへ送信されることはありません）",
+    storage:
+      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。localStorage・Cookie は使いません。入力したラベルや URL、色の設定は保存しないので、ページを閉じると消えます。",
+    libraries: [],
+  }}
+  tour={[
+    {
+      target: "#preview",
+      title: "プレビュー",
+      body: "設定を変えると、ここにボタンが表示されます。背景を切り替えて、貼り付け先に近い色で確認できます。",
+    },
+    {
+      target: "#presets",
+      title: "テンプレート",
+      body: "押すと、その見た目に設定がまとめて切り替わります。ここから細かく調整できます。",
+    },
+    {
+      target: "#label",
+      title: "ラベルとリンク",
+      body: "ボタンの文字とリンク先の URL を入力します。「新しいタブで開く」もここで選べます。",
+    },
+    {
+      target: "#background",
+      title: "色・形・大きさ",
+      body: "背景色（グラデーションも可）、文字色、枠線、角丸、大きさ、影、マウスを乗せたときの動きを設定します。",
+    },
+    {
+      target: "#code",
+      title: "コード",
+      body: "設定どおりのボタンのコードです。ほかのサイトにそのまま貼り付けられます。",
+    },
+    {
+      target: "#copy-code",
+      title: "コピー",
+      body: "コードをまとめてコピーします。「style 属性だけ」を選ぶと、<style> が使えない場所にも貼れます。",
+    },
+  ]}
+>
+  <div class="page">
+    <div class="tool-header">
+      <ToolIcon name={tool.icon} />
+      <h1 class="tool-header__name">{tool.name}</h1>
+    </div>
+
+    <div class="layout">
+      <form id="controls" class="card controls" autocomplete="off">
+        <div class="field" id="presets">
+          <span class="field__label">テンプレート</span>
+          <div class="presets">
+            {button.presets.map((preset) => (
+              <button
+                class="presets__button"
+                type="button"
+                data-preset={preset.id}
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="label">
+            ラベル
+          </label>
+          <input
+            id="label"
+            class="field__input"
+            type="text"
+            name="label"
+            value={initial.label}
+            maxlength="100"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="url">
+            リンク URL
+          </label>
+          <input
+            id="url"
+            class="field__input"
+            type="text"
+            inputmode="url"
+            name="url"
+            value={initial.url}
+            placeholder="https://example.com"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            aria-describedby="url-note"
+          />
+          <p id="url-note" class="note" aria-live="polite"></p>
+          <label class="check">
+            <input type="checkbox" name="newTab" checked={initial.newTab} />
+            <span>新しいタブで開く</span>
+          </label>
+        </div>
+
+        <div class="group" id="design">
+          <div class="colors">
+            <Color
+              name="background"
+              label="背景色"
+              value={initial.background}
+            />
+            <Color name="color" label="文字色" value={initial.color} />
+          </div>
+
+          <label class="check">
+            <input type="checkbox" name="gradient" checked={initial.gradient} />
+            <span>背景をグラデーション（上から下）にする</span>
+          </label>
+          <div id="gradient-end" hidden>
+            <Color
+              name="backgroundEnd"
+              label="グラデーションの下の色"
+              value={initial.backgroundEnd}
+            />
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="range">
+            <label class="field__label" for="borderWidth">
+              枠線の太さ
+            </label>
+            <span class="range__value" data-range-for="borderWidth"></span>
+            <input
+              id="borderWidth"
+              class="range__input"
+              type="range"
+              name="borderWidth"
+              min="0"
+              max={button.MAX_BORDER}
+              step="1"
+              value={initial.borderWidth}
+            />
+          </div>
+          <div id="border-color" hidden>
+            <Color
+              name="borderColor"
+              label="枠線の色"
+              value={initial.borderColor}
+            />
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="range">
+            <label class="field__label" for="radius">
+              角の丸さ
+            </label>
+            <span class="range__value" data-range-for="radius"></span>
+            <input
+              id="radius"
+              class="range__input"
+              type="range"
+              name="radius"
+              min="0"
+              max={button.MAX_RADIUS}
+              step="1"
+              value={initial.radius}
+            />
+          </div>
+          <label class="check">
+            <input type="checkbox" name="pill" checked={initial.pill} />
+            <span>端を完全な半円にする（ピル型）</span>
+          </label>
+        </div>
+
+        <Segmented
+          name="size"
+          legend="大きさ"
+          value={initial.size}
+          options={[
+            ["s", "小"],
+            ["m", "中"],
+            ["l", "大"],
+          ]}
+        />
+        <Segmented
+          name="fullWidth"
+          legend="幅"
+          value={String(initial.fullWidth)}
+          options={[
+            ["false", "自動"],
+            ["true", "いっぱい"],
+          ]}
+        />
+        <label class="check">
+          <input type="checkbox" name="bold" checked={initial.bold} />
+          <span>文字を太くする</span>
+        </label>
+        <Segmented
+          name="shadow"
+          legend="影"
+          value={initial.shadow}
+          options={[
+            ["none", "なし"],
+            ["soft", "弱い"],
+            ["strong", "強い"],
+          ]}
+        />
+        <Segmented
+          name="hover"
+          legend="マウスを乗せたとき"
+          value={initial.hover}
+          options={[
+            ["none", "なし"],
+            ["dark", "暗く"],
+            ["lift", "浮く"],
+          ]}
+        />
+      </form>
+
+      <div class="side">
+        <section class="card preview" aria-labelledby="preview-title">
+          <div class="preview__head">
+            <h2 id="preview-title" class="section-title">
+              プレビュー
+            </h2>
+          </div>
+          <div id="preview" class="preview__stage" data-bg="light">
+            <div id="preview-host" class="preview__host"></div>
+          </div>
+          <p id="contrast" class="note" aria-live="polite"></p>
+          <form id="preview-options" class="preview__options">
+            <Segmented
+              name="previewBg"
+              legend="プレビューの背景"
+              value="light"
+              options={[
+                ["light", "明るい"],
+                ["dark", "暗い"],
+                ["checker", "市松"],
+              ]}
+            />
+          </form>
+        </section>
+
+        <section class="card code" aria-labelledby="code-title">
+          <div class="code__head">
+            <h2 id="code-title" class="section-title">
+              コード
+            </h2>
+            <span class="copy">
+              <button
+                id="copy-code"
+                class="copy__button"
+                type="button"
+                aria-label="コードをコピー"
+                aria-describedby="copy-tooltip"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="9" width="12" height="12" rx="2"></rect>
+                  <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path>
+                </svg>
+              </button>
+              <span
+                id="copy-tooltip"
+                class="copy__tooltip"
+                role="status"
+              ></span>
+            </span>
+          </div>
+          <form id="output-options">
+            <Segmented
+              name="output"
+              legend="コードの形式"
+              value="style"
+              options={[
+                ["style", "<style> 付き"],
+                ["inline", "style 属性だけ"],
+              ]}
+            />
+          </form>
+          <p id="output-note" class="note"></p>
+          <textarea
+            id="code"
+            class="code__area"
+            rows="8"
+            readonly
+            spellcheck="false"
+            aria-label="ボタンのコード"
+          ></textarea>
+        </section>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<script>
+  import * as motion from "#ui/motion.ts";
+  import * as button from "../lib/button";
+
+  // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
+  const init = () => {
+    const form = document.querySelector<HTMLFormElement>("#controls");
+    // ClientRouter で他のページから遷移したときも初期化する（このツール以外のページでは何もしない）
+    if (!form) return;
+    const previewOptions =
+      document.querySelector<HTMLFormElement>("#preview-options")!;
+    const outputOptions =
+      document.querySelector<HTMLFormElement>("#output-options")!;
+    const stage = document.querySelector<HTMLElement>("#preview")!;
+    const host = document.querySelector<HTMLElement>("#preview-host")!;
+    const contrast = document.querySelector<HTMLElement>("#contrast")!;
+    const urlNote = document.querySelector<HTMLElement>("#url-note")!;
+    const outputNote = document.querySelector<HTMLElement>("#output-note")!;
+    const code = document.querySelector<HTMLTextAreaElement>("#code")!;
+    const copyButton = document.querySelector<HTMLButtonElement>("#copy-code")!;
+    const copyTooltip = document.querySelector<HTMLElement>("#copy-tooltip")!;
+    const gradientEnd = document.querySelector<HTMLElement>("#gradient-end")!;
+    const borderColor = document.querySelector<HTMLElement>("#border-color")!;
+
+    // 貼り付け先のサイトの CSS と混ざらないよう、プレビューは Shadow DOM の中に描く
+    const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    // プレビューのリンクは押しても移動させない
+    host.addEventListener(
+      "click",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      true,
+    );
+
+    const settings: button.Settings = { ...button.defaultSettings };
+    let output: button.Output = "style";
+
+    const control = (name: string) =>
+      form.querySelector<HTMLInputElement>(`[name="${name}"]`);
+    const hexInputs = () =>
+      form.querySelectorAll<HTMLInputElement>("[data-hex-for]");
+
+    // 設定の値を種類（真偽・数値・文字）に合わせて取り込む
+    const read = (key: keyof button.Settings, element: HTMLInputElement) => {
+      const current = settings[key];
+      if (typeof current === "boolean") {
+        const next =
+          element.type === "checkbox"
+            ? element.checked
+            : element.value === "true";
+        (settings[key] as boolean) = next;
+      } else if (typeof current === "number") {
+        (settings[key] as number) = Number(element.value);
+      } else {
+        (settings[key] as string) = element.value;
+      }
+    };
+
+    // 設定をフォームの表示に反映する（テンプレートを選んだとき）
+    const write = () => {
+      for (const key of Object.keys(settings) as (keyof button.Settings)[]) {
+        const value = settings[key];
+        const radios = form.querySelectorAll<HTMLInputElement>(
+          `[name="${key}"][type="radio"]`,
+        );
+        if (radios.length > 0) {
+          for (const radio of radios)
+            radio.checked = radio.value === String(value);
+          continue;
+        }
+        const element = control(key);
+        if (!element) continue;
+        if (element.type === "checkbox") element.checked = value === true;
+        else element.value = String(value);
+      }
+      for (const hex of hexInputs()) {
+        const key = hex.dataset["hexFor"] as keyof button.Settings;
+        hex.value = String(settings[key]);
+        hex.removeAttribute("aria-invalid");
+      }
+    };
+
+    const showDetails = () => {
+      for (const label of document.querySelectorAll<HTMLElement>(
+        "[data-range-for]",
+      )) {
+        label.textContent = `${settings[label.dataset["rangeFor"] as "radius" | "borderWidth"]}px`;
+      }
+      const radius = control("radius")!;
+      radius.disabled = settings.pill;
+      gradientEnd.hidden = !settings.gradient;
+      borderColor.hidden = settings.borderWidth === 0;
+    };
+
+    const render = (pop = false) => {
+      showDetails();
+      const urlCheck = button.checkUrl(settings.url);
+      const hasLabel = settings.label.trim() !== "";
+      const valid = urlCheck.ok && hasLabel;
+      const href = urlCheck.ok ? urlCheck.href : "#";
+
+      urlNote.classList.toggle("note--error", !urlCheck.ok);
+      urlNote.textContent = urlCheck.ok ? "" : urlCheck.reason;
+
+      // プレビューは、実際に出力するコードと同じものを描く
+      shadow.innerHTML = button.buildSnippet(
+        { ...settings, label: hasLabel ? settings.label : "　" },
+        href,
+        output,
+      );
+      const anchor = shadow.querySelector("a");
+      if (pop && anchor) motion.bounce(anchor, "pop");
+
+      const ratio = button.worstContrast(settings);
+      const ratioText = `${ratio.toFixed(1)}:1`;
+      contrast.classList.toggle("note--error", ratio < 3);
+      contrast.textContent =
+        ratio >= 4.5
+          ? `文字と背景のコントラスト比は ${ratioText} です。読みやすい色の組み合わせです。`
+          : ratio >= 3
+            ? `文字と背景のコントラスト比は ${ratioText} です。大きな文字なら読めますが、小さい文字では見づらくなります。`
+            : `文字と背景のコントラスト比は ${ratioText} です。文字が読みにくいので、色を調整してください。`;
+
+      outputNote.textContent =
+        output === "style"
+          ? "<style> ごと貼り付けます。クラス名は他のサイトとぶつからないよう自動で付きます。マウスを乗せたときの動きとキーボードのフォーカス表示も入ります。"
+          : "style 属性だけなので、<style> を取り除くメールや一部の CMS でも使えます。マウスを乗せたときの動きは付きません。";
+
+      copyButton.disabled = !valid;
+      if (valid) {
+        code.value = button.buildSnippet(settings, href, output);
+      } else {
+        code.value = "";
+        outputNote.textContent = hasLabel
+          ? "リンク URL を直すと、コードが表示されます。"
+          : "ラベルを入力すると、コードが表示されます。";
+        outputNote.classList.add("note--error");
+      }
+      if (valid) outputNote.classList.remove("note--error");
+      code.rows = Math.min(16, Math.max(4, code.value.split("\n").length));
+    };
+
+    form.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      const hexFor = target.dataset["hexFor"];
+      if (hexFor) {
+        // 16 進数の入力欄：正しい値になったときだけ反映する
+        const valid = button.isHex(target.value.trim());
+        target.setAttribute("aria-invalid", String(!valid));
+        if (!valid) return;
+        const normalized = button.normalizeHex(target.value, "#000000");
+        const picker = control(hexFor)!;
+        picker.value = normalized;
+        read(hexFor as keyof button.Settings, picker);
+      } else if (target.name in settings) {
+        read(target.name as keyof button.Settings, target);
+        // 色の選択に合わせて 16 進数の欄も更新する
+        if (target.type === "color") {
+          const hex = form.querySelector<HTMLInputElement>(
+            `[data-hex-for="${target.name}"]`,
+          );
+          if (hex) {
+            hex.value = target.value;
+            hex.removeAttribute("aria-invalid");
+          }
+        }
+      }
+      render();
+    });
+
+    // テンプレート：見た目の設定をまとめて切り替える
+    form.addEventListener("click", (event) => {
+      const target =
+        event.target instanceof Element
+          ? event.target.closest<HTMLButtonElement>("[data-preset]")
+          : null;
+      if (!target) return;
+      const preset = button.presets.find(
+        (p) => p.id === target.dataset["preset"],
+      );
+      if (!preset) return;
+      // ラベルと URL は入力したままにして、見た目の設定だけを切り替える
+      const { label, url, newTab } = settings;
+      Object.assign(settings, button.defaultSettings, preset.settings, {
+        label,
+        url,
+        newTab,
+      });
+      write();
+      render(true);
+    });
+
+    previewOptions.addEventListener("input", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.name === "previewBg")
+        stage.dataset["bg"] = target.value;
+    });
+
+    outputOptions.addEventListener("input", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.name === "output") {
+        output = target.value === "inline" ? "inline" : "style";
+        render();
+      }
+    });
+
+    // コピー結果はレイアウトを動かさないよう、ボタン上のツールチップで出す
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const showTooltip = (message: string) => {
+      copyTooltip.textContent = message;
+      copyTooltip.classList.add("copy__tooltip--visible");
+      motion.bounce(copyTooltip, "in");
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        copyTooltip.classList.remove("copy__tooltip--visible");
+      }, 1500);
+    };
+    copyButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(code.value);
+        showTooltip("コピーしました");
+      } catch {
+        // クリップボードが使えない環境ではコードを選択状態にして手動コピーに任せる
+        code.select();
+        showTooltip("選択しました");
+      }
+    });
+
+    write();
+    render();
+  };
+  document.addEventListener("astro:page-load", init);
+</script>
+
+<style>
+  .tool-header {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    margin-bottom: var(--space-6);
+  }
+
+  .tool-header__name {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  .page {
+    width: 100%;
+  }
+
+  /* 狭い画面は プレビュー → 設定 → コード の 1 カラム、広い画面は設定を左、プレビューとコードを右に置く */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  /* 狭い画面では .side を解いて、プレビュー・設定・コードの順に並べ替える */
+  .side {
+    display: contents;
+  }
+
+  .preview {
+    order: 0;
+  }
+
+  .controls {
+    order: 1;
+  }
+
+  .code {
+    order: 2;
+  }
+
+  @media (min-width: 860px) {
+    .layout {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    }
+
+    .controls {
+      grid-column: 1;
+      order: 0;
+    }
+
+    .side {
+      grid-column: 2;
+      order: 0;
+      position: sticky;
+      top: var(--space-4);
+      display: grid;
+      gap: var(--space-4);
+    }
+  }
+
+  .section-title {
+    font-size: 1.125rem;
+  }
+
+  .controls {
+    display: grid;
+    gap: var(--space-6);
+  }
+
+  .group {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .group[hidden],
+  #gradient-end[hidden],
+  #border-color[hidden] {
+    display: none;
+  }
+
+  .colors {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    gap: var(--space-4);
+  }
+
+  .field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .field__label {
+    font-weight: 700;
+  }
+
+  .field__input {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: inherit;
+    font: inherit;
+  }
+
+  .presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .presets__button {
+    min-height: 2.25rem;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .presets__button:hover {
+    border-color: var(--color-accent);
+  }
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 2.25rem;
+    cursor: pointer;
+  }
+
+  .check input {
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+    accent-color: var(--color-accent);
+  }
+
+  .range {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .range__value {
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .range__input {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin: 0;
+    accent-color: var(--color-accent);
+  }
+
+  .preview {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .preview__stage {
+    display: grid;
+    place-items: center;
+    min-height: 9rem;
+    padding: var(--space-6) var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: #ffffff;
+    color: #1b1f24;
+  }
+
+  .preview__stage[data-bg="dark"] {
+    background: #1b1f24;
+    color: #ffffff;
+  }
+
+  .preview__stage[data-bg="checker"] {
+    background: conic-gradient(
+        #d9dde2 25%,
+        #ffffff 0 50%,
+        #d9dde2 0 75%,
+        #ffffff 0
+      )
+      0 0 / 20px 20px;
+  }
+
+  /* 幅「いっぱいに広げる」を、プレビューの幅いっぱいで確認できるようにする */
+  .preview__host {
+    width: 100%;
+    text-align: center;
+  }
+
+  .code {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .code__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .code__area {
+    width: 100%;
+    min-height: 10rem;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: inherit;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    resize: vertical;
+    overflow-wrap: anywhere;
+    field-sizing: content;
+    max-height: 24rem;
+  }
+
+  .note {
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  .note--error {
+    color: light-dark(#c5221f, #f28b82);
+  }
+
+  .copy {
+    position: relative;
+    flex: none;
+  }
+
+  .copy__button {
+    display: inline-grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+
+  .copy__button:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-text);
+  }
+
+  .copy__button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .copy__button svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  /* 右端のボタンのツールチップは、狭い画面で画面外に出ないよう右揃えにする */
+  .copy__tooltip {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    padding: var(--space-1) var(--space-2);
+    border-radius: 6px;
+    background: var(--color-text);
+    color: var(--color-surface);
+    font-size: 0.75rem;
+    font-weight: 400;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(0, 4px);
+    transition:
+      opacity 0.15s,
+      transform 0.15s;
+  }
+
+  .copy__tooltip--visible {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .copy__tooltip {
+      transition: none;
+    }
+  }
+</style>

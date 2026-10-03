@@ -4,7 +4,13 @@
 // 通信先は同じオリジンだけで、入力内容などは保存しない。
 
 const CACHE = "toolbox-v1";
-const PRECACHE = ["/", "/calendar", "/manifest.webmanifest", "/icons/icon.svg"];
+const PRECACHE = [
+  "/",
+  "/calendar",
+  "/em-buttons",
+  "/manifest.webmanifest",
+  "/icons/icon.svg",
+];
 
 // 事前キャッシュ。ページの HTML だけでなく、そこから辿れる CSS・JS・フォントも一緒に保存する
 // （初回訪問のあとオフラインで開いても、見た目と動作が揃うように）
