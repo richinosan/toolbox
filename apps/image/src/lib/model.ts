@@ -1,5 +1,6 @@
 // IMAGE のドキュメント（キャンバスとレイヤー）のデータ構造。
 // 座標・大きさはすべてドキュメントのピクセル単位（整数）で持つ。
+import * as fonts from "./fonts";
 
 /** 一度に扱えるキャンバスの最大面積（iOS Safari の canvas の上限 16,777,216px に合わせる） */
 export const MAX_AREA = 4096 * 4096;
@@ -78,33 +79,58 @@ export type ShapeLayer = LayerBase & {
   radius: number;
 };
 
-export type FontKey = "line-seed" | "gothic" | "mincho";
-
-export const fontOptions: readonly (readonly [FontKey, string])[] = [
-  ["line-seed", "LINE Seed JP"],
-  ["gothic", "ゴシック体"],
-  ["mincho", "明朝体"],
-];
-
 export type TextAlign = "left" | "center" | "right";
+
+/** 文字ごとの書式 */
+export type CharStyle = {
+  font: fonts.FontRef;
+  /** 文字の大きさ（px） */
+  size: number;
+  color: string;
+  bold: boolean;
+};
+
+/** 同じ書式が続く文字のまとまり。改行（\n）も文字として含む */
+export type TextRun = { text: string; style: CharStyle };
+
+/** 保存時に作る、文字の形のパス（フォントが無い端末でも同じ見た目で表示するため） */
+export type TextOutline = {
+  /** パスを作ったときの文字と書式（変わっていたら使わない） */
+  key: string;
+  width: number;
+  height: number;
+  /** レイヤーの左上を原点にした SVG のパス */
+  parts: { d: string; color: string; bold: boolean }[];
+};
 
 export type TextLayer = LayerBase & {
   type: "text";
-  text: string;
-  font: FontKey;
-  fontSize: number;
-  bold: boolean;
-  color: string;
+  runs: TextRun[];
   align: TextAlign;
-  /** 行の高さ（文字の大きさに対する倍率 ×100） */
+  /** 行の高さ（各行の一番大きな文字に対する倍率 ×100） */
   lineHeight: number;
   strokeColor: string;
   /** 縁取りの太さ（px） */
   strokeWidth: number;
   shadow: boolean;
+  outline: TextOutline | null;
 };
 
-export type Layer = ImageLayer | ShapeLayer | TextLayer;
+/** テキストを「パスに変換」したレイヤー */
+export type PathLayer = LayerBase & {
+  type: "path";
+  /** パスの座標の基準の大きさ（width / height との比で拡大・縮小する） */
+  baseWidth: number;
+  baseHeight: number;
+  parts: { d: string; color: string; bold: boolean }[];
+  /** 変換したときの一番大きな文字の大きさ（影の大きさに使う） */
+  size: number;
+  strokeColor: string;
+  strokeWidth: number;
+  shadow: boolean;
+};
+
+export type Layer = ImageLayer | ShapeLayer | TextLayer | PathLayer;
 export type LayerType = Layer["type"];
 
 export type Doc = {
@@ -129,6 +155,7 @@ export const layerTypeLabels: Record<LayerType, string> = {
   rect: "四角",
   ellipse: "丸",
   text: "テキスト",
+  path: "パス",
 };
 
 export const newId = () =>
@@ -173,25 +200,29 @@ export const createShape = (doc: Doc, type: "rect" | "ellipse"): ShapeLayer => {
   };
 };
 
-export const createText = (doc: Doc): TextLayer => {
-  const fontSize = Math.max(
-    12,
-    Math.round(Math.min(doc.width, doc.height) / 10),
-  );
+export const createText = (doc: Doc, style?: CharStyle): TextLayer => {
+  const size = Math.max(12, Math.round(Math.min(doc.width, doc.height) / 10));
   return {
-    // 大きさは文字から決まるので、描画時に measure した値で上書きする
-    ...base(doc, nextName(doc, "text"), fontSize * 4, fontSize),
+    // 大きさは文字から決まるので、描画時に測った値で上書きする
+    ...base(doc, nextName(doc, "text"), size * 4, size),
     type: "text",
-    text: "テキスト",
-    font: "line-seed",
-    fontSize,
-    bold: true,
-    color: "#ffffff",
+    runs: [
+      {
+        text: "テキスト",
+        style: style ?? {
+          font: fonts.builtin,
+          size,
+          color: "#ffffff",
+          bold: true,
+        },
+      },
+    ],
     align: "center",
     lineHeight: 130,
     strokeColor: "#1b1f24",
-    strokeWidth: Math.max(1, Math.round(fontSize / 12)),
+    strokeWidth: Math.max(1, Math.round(size / 12)),
     shadow: false,
+    outline: null,
   };
 };
 

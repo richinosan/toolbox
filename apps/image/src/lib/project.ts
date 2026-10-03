@@ -1,7 +1,9 @@
 // 作品ファイル（.tbimg）の保存と読み込み。
 // 作品はブラウザ内には保存せず、端末のファイルとして書き出す。
 // File System Access API が使えるブラウザでは同じファイルに上書き保存し、使えないブラウザではダウンロードする。
+import * as fonts from "./fonts";
 import * as model from "./model";
+import * as text from "./text";
 
 export const EXTENSION = ".tbimg";
 const FORMAT = "toolbox-image";
@@ -146,6 +148,33 @@ const readFilters = (value: unknown): model.Filters => {
   };
 };
 
+const readStyle = (value: unknown): model.CharStyle => {
+  const v = isObject(value) ? value : {};
+  return {
+    font: fonts.readRef(v["font"]),
+    size: num(v["size"], 48, 1, 2000),
+    color: hex(v["color"], "#ffffff"),
+    bold: bool(v["bold"], false),
+  };
+};
+
+/** SVG のパス（数字と M・L・Q・C・Z だけ）を確かめる */
+const readParts = (value: unknown) => {
+  if (!Array.isArray(value)) return null;
+  const parts: model.TextOutline["parts"] = [];
+  for (const part of value.slice(0, 5000)) {
+    if (!isObject(part) || typeof part["d"] !== "string") return null;
+    const d = part["d"];
+    if (d.length > 2_000_000 || !/^[MLQCZ0-9.\-\s,e]*$/.test(d)) return null;
+    parts.push({
+      d,
+      color: hex(part["color"], "#ffffff"),
+      bold: bool(part["bold"], false),
+    });
+  }
+  return parts;
+};
+
 const readLayer = (
   value: unknown,
   assetIds: Set<string>,
@@ -178,25 +207,66 @@ const readLayer = (
         strokeWidth: num(value["strokeWidth"], 0, 0, 500),
         radius: num(value["radius"], 0, 0, 5000),
       };
-    case "text":
+    case "text": {
+      const runs = Array.isArray(value["runs"])
+        ? value["runs"].slice(0, 2000).flatMap((run): model.TextRun[] =>
+            isObject(run) && typeof run["text"] === "string"
+              ? [
+                  {
+                    text: run["text"].slice(0, 10_000),
+                    style: readStyle(run["style"]),
+                  },
+                ]
+              : [],
+          )
+        : [];
+      const outline = isObject(value["outline"]) ? value["outline"] : null;
+      const parts = outline ? readParts(outline["parts"]) : null;
       return {
         ...base,
         type: "text",
-        text: str(value["text"], ""),
-        font: oneOf(
-          value["font"],
-          model.fontOptions.map(([key]) => key),
-          "line-seed",
-        ),
-        fontSize: num(value["fontSize"], 48, 1, 2000),
-        bold: bool(value["bold"], true),
-        color: hex(value["color"], "#ffffff"),
+        runs: text.normalize(runs, readStyle(null)),
         align: oneOf(value["align"], ["left", "center", "right"], "center"),
         lineHeight: num(value["lineHeight"], 130, 50, 300),
         strokeColor: hex(value["strokeColor"], "#1b1f24"),
         strokeWidth: num(value["strokeWidth"], 0, 0, 200),
         shadow: bool(value["shadow"], false),
+        outline:
+          outline && parts
+            ? {
+                key: str(outline["key"], "", 1_000_000),
+                width: int(outline["width"], base.width, 1, model.MAX_SIDE * 4),
+                height: int(
+                  outline["height"],
+                  base.height,
+                  1,
+                  model.MAX_SIDE * 4,
+                ),
+                parts,
+              }
+            : null,
       };
+    }
+    case "path": {
+      const parts = readParts(value["parts"]);
+      if (!parts) return null;
+      return {
+        ...base,
+        type: "path",
+        baseWidth: num(value["baseWidth"], base.width, 1, model.MAX_SIDE * 4),
+        baseHeight: num(
+          value["baseHeight"],
+          base.height,
+          1,
+          model.MAX_SIDE * 4,
+        ),
+        parts,
+        size: num(value["size"], 48, 1, 2000),
+        strokeColor: hex(value["strokeColor"], "#1b1f24"),
+        strokeWidth: num(value["strokeWidth"], 0, 0, 200),
+        shadow: bool(value["shadow"], false),
+      };
+    }
     default:
       return null;
   }

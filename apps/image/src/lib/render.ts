@@ -1,58 +1,15 @@
 // レイヤーの描画。レイヤーごとにフィルター込みの画像を作ってキャッシュし、それを重ねて 1 枚にする。
 import * as filters from "./filters";
+import * as fonts from "./fonts";
 import * as model from "./model";
-
-/** canvas に渡すフォント指定。LINE Seed JP は Astro の Fonts API が付けた名前を CSS 変数から読む */
-const fontFamily = (font: model.FontKey) => {
-  switch (font) {
-    case "line-seed": {
-      const value = getComputedStyle(document.documentElement)
-        .getPropertyValue("--font-line-seed-jp")
-        .trim();
-      return value || "system-ui, sans-serif";
-    }
-    case "gothic":
-      return '"Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif';
-    case "mincho":
-      return '"Hiragino Mincho ProN", "Noto Serif JP", "Yu Mincho", "YuMincho", serif';
-  }
-};
-
-export const fontString = (layer: model.TextLayer) =>
-  `${layer.bold ? 700 : 400} ${layer.fontSize}px ${fontFamily(layer.font)}`;
-
-let measureContext: CanvasRenderingContext2D | null = null;
-const measurer = () => {
-  measureContext ??= document.createElement("canvas").getContext("2d")!;
-  return measureContext;
-};
-
-const lines = (layer: model.TextLayer) => layer.text.split(/\r?\n/);
-
-/** テキストの行の高さ（px） */
-const lineHeight = (layer: model.TextLayer) =>
-  (layer.fontSize * layer.lineHeight) / 100;
-
-/** テキストレイヤーの枠の大きさ（縁取りと影は含まない） */
-export const measureText = (layer: model.TextLayer) => {
-  const context = measurer();
-  context.font = fontString(layer);
-  const width = Math.max(
-    layer.fontSize * 0.5,
-    ...lines(layer).map((line) => context.measureText(line).width),
-  );
-  return {
-    width: Math.max(1, Math.ceil(width)),
-    height: Math.max(1, Math.ceil(lines(layer).length * lineHeight(layer))),
-  };
-};
+import * as text from "./text";
 
 /**
  * テキストの内容や大きさが変わったとき、枠の大きさを測り直す。
  * 左揃えは左端、中央揃えは中心、右揃えは右端の位置を保つ。
  */
 export const fitText = (layer: model.TextLayer) => {
-  const size = measureText(layer);
+  const size = text.measure(layer);
   if (size.width === layer.width && size.height === layer.height) return false;
   const anchor =
     layer.align === "left" ? 0 : layer.align === "center" ? 0.5 : 1;
@@ -62,65 +19,21 @@ export const fitText = (layer: model.TextLayer) => {
   return true;
 };
 
-/** テキストに使う文字のフォントを読み込む（LINE Seed JP は文字の範囲ごとに分かれている） */
-export const loadFont = async (layer: model.TextLayer) => {
-  if (!("fonts" in document)) return;
-  try {
-    await document.fonts.load(fontString(layer), layer.text || "A");
-  } catch {
-    // 読み込めなくても代わりのフォントで描く
-  }
-};
-
-/** 縁取りと影が枠の外にはみ出す幅 */
-const textOverflow = (layer: model.TextLayer) =>
-  Math.ceil(layer.strokeWidth + (layer.shadow ? layer.fontSize * 0.25 : 0));
-
-const drawText = (
-  context: CanvasRenderingContext2D,
-  layer: model.TextLayer,
-  ox: number,
-  oy: number,
-) => {
-  context.font = fontString(layer);
-  context.textAlign = layer.align;
-  context.textBaseline = "middle";
-  context.lineJoin = "round";
-  context.miterLimit = 2;
-  const x =
-    ox +
-    (layer.align === "left"
-      ? 0
-      : layer.align === "center"
-        ? layer.width / 2
-        : layer.width);
-  const step = lineHeight(layer);
-  const textLines = lines(layer);
-  const shadow = () => {
-    context.shadowColor = "rgb(0 0 0 / 0.55)";
-    context.shadowBlur = layer.fontSize * 0.12;
-    context.shadowOffsetX = layer.fontSize * 0.04;
-    context.shadowOffsetY = layer.fontSize * 0.06;
-  };
-  const noShadow = () => {
-    context.shadowColor = "transparent";
-  };
-  if (layer.strokeWidth > 0) {
-    // 縁取りは文字の外側だけに見えるよう、太さの 2 倍で描いた上に塗りを重ねる
-    if (layer.shadow) shadow();
-    context.strokeStyle = layer.strokeColor;
-    context.lineWidth = layer.strokeWidth * 2;
-    textLines.forEach((line, i) =>
-      context.strokeText(line, x, oy + step * i + step / 2),
-    );
-    noShadow();
-  } else if (layer.shadow) shadow();
-  context.fillStyle = layer.color;
-  textLines.forEach((line, i) =>
-    context.fillText(line, x, oy + step * i + step / 2),
+/** テキストで使うフォントを読み込む（文字の範囲ごとに分かれたファイルの、必要な分だけ） */
+export const loadFonts = (layer: model.TextLayer) =>
+  Promise.all(
+    text
+      .fontUsage(layer.runs)
+      .map((usage) => fonts.ensure(usage.font, usage.bold, usage.text)),
   );
-  noShadow();
-};
+
+const textPad = (layer: model.TextLayer | model.PathLayer, size: number) =>
+  text.overflow(layer.strokeWidth, layer.shadow, size);
+
+/** 拡大・縮小したパスの、一番大きな文字の大きさ */
+const pathSize = (layer: model.PathLayer) =>
+  layer.size *
+  Math.min(layer.width / layer.baseWidth, layer.height / layer.baseHeight);
 
 const drawShape = (
   context: CanvasRenderingContext2D,
@@ -174,7 +87,12 @@ export const renderLayer = (
 ): Rendered => {
   const blurPad =
     layer.type === "image" ? 0 : filters.blurPadding(layer.filters.blur);
-  const pad = (layer.type === "text" ? textOverflow(layer) : 0) + blurPad;
+  const pad =
+    (layer.type === "text"
+      ? textPad(layer, text.maxSize(layer.runs))
+      : layer.type === "path"
+        ? textPad(layer, pathSize(layer))
+        : 0) + blurPad;
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(layer.width) + pad * 2);
   canvas.height = Math.max(1, Math.round(layer.height) + pad * 2);
@@ -184,7 +102,23 @@ export const renderLayer = (
     const asset = assets.get(layer.asset);
     if (asset) context.drawImage(asset.image, 0, 0, layer.width, layer.height);
   } else if (layer.type === "text") {
-    drawText(context, layer, pad, pad);
+    if (text.usesOutline(layer) && layer.outline) {
+      text.drawParts(context, layer.outline.parts, {
+        ...layer,
+        size: text.maxSize(layer.runs),
+        ox: pad,
+        oy: pad,
+      });
+    } else text.draw(context, layer, pad, pad);
+  } else if (layer.type === "path") {
+    text.drawParts(context, layer.parts, {
+      ...layer,
+      size: pathSize(layer),
+      ox: pad,
+      oy: pad,
+      scaleX: layer.width / layer.baseWidth,
+      scaleY: layer.height / layer.baseHeight,
+    });
   } else {
     drawShape(context, layer, pad, pad);
   }
@@ -206,7 +140,8 @@ export const renderLayer = (
 const cacheKey = (layer: model.Layer, fontVersion: number) => {
   const { x: _x, y: _y, opacity: _o, visible: _v, name: _n, ...rest } = layer;
   return (
-    JSON.stringify(rest) + (layer.type === "text" ? `#${fontVersion}` : "")
+    JSON.stringify(rest) +
+    (layer.type === "text" ? `#${fontVersion}#${fonts.getVersion()}` : "")
   );
 };
 
@@ -242,9 +177,11 @@ export const drawLayers = (
   doc: model.Doc,
   assets: model.Assets,
   cache: LayerCache,
+  /** キャンバス上で編集中のテキスト（編集欄の文字を見せるので描かない） */
+  hidden: string | null = null,
 ) => {
   for (const layer of doc.layers) {
-    if (!layer.visible || layer.opacity <= 0) continue;
+    if (!layer.visible || layer.opacity <= 0 || layer.id === hidden) continue;
     const { canvas, pad } = cache.get(layer, assets);
     context.globalAlpha = layer.opacity / 100;
     context.drawImage(canvas, layer.x - pad, layer.y - pad);

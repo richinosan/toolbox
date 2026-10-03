@@ -1,16 +1,25 @@
 // IMAGE のエディター本体。ページの要素に操作を結び付け、ドキュメントの状態・履歴・描画を管理する。
 import * as motion from "#ui/motion.ts";
 import * as exporter from "./exporter";
+import * as fontpicker from "./fontpicker";
+import * as fonts from "./fonts";
 import * as model from "./model";
+import * as outline from "./outline";
 import * as project from "./project";
 import * as render from "./render";
+import * as richedit from "./richedit";
 import * as snap from "./snap";
+import * as text from "./text";
 
 const HISTORY_LIMIT = 100;
 /** スナップが効く距離（画面上の px） */
 const SNAP_DISTANCE = 8;
 const MIN_SCALE = 0.02;
 const MAX_SCALE = 16;
+/** 2 回のタップをダブルタップとみなす間隔（ms） */
+const DOUBLE_TAP = 350;
+/** 編集欄から離れても書式を変える範囲を見せるハイライトの名前 */
+const HIGHLIGHT = "tb-text-selection";
 /** キャンバスの下に置く拡大・縮小のボタンの分の余白（px） */
 const ZOOM_BAR_SPACE = 52;
 
@@ -120,6 +129,7 @@ const typeIcons: Record<model.LayerType, string> = {
   text: '<svg viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>',
   rect: '<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg>',
   ellipse: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>',
+  path: '<svg viewBox="0 0 24 24"><path d="M12 3 5 14l7 7 7-7z"/><circle cx="12" cy="13" r="1.6"/></svg>',
 };
 
 const eyeIcon = (visible: boolean) =>
@@ -134,12 +144,63 @@ const readProp = (layer: model.Layer, path: string): unknown => {
   return (layer as Record<string, unknown>)[path];
 };
 
+/** 明るい色か（パネルの編集欄で、白っぽい文字を暗い背景で見せる） */
+const isLight = (color: string) => {
+  const value = Number.parseInt(color.slice(1), 16);
+  const r = Math.floor(value / 65536) % 256;
+  const g = Math.floor(value / 256) % 256;
+  const b = value % 256;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
+};
+
+const highlights = () =>
+  "highlights" in CSS && typeof Highlight === "function"
+    ? CSS.highlights
+    : null;
+
 const writeProp = (layer: model.Layer, path: string, value: unknown) => {
   if (path.startsWith("filters.")) {
     (layer.filters as Record<string, unknown>)[path.slice(8)] = value;
   } else {
     (layer as Record<string, unknown>)[path] = value;
   }
+};
+
+const textChanged = (layer: model.Layer) => {
+  if (layer.type !== "text") return;
+  render.fitText(layer);
+  // 新しく使う文字のフォントを読み込む（読み込めたら fonts.subscribe で測り直して描き直す）
+  render.loadFonts(layer).catch(() => undefined);
+};
+
+const effectsOf = (layer: model.TextLayer) => ({
+  strokeColor: layer.strokeColor,
+  strokeWidth: layer.strokeWidth,
+  shadow: layer.shadow,
+});
+
+const clearHighlight = () => highlights()?.delete(HIGHLIGHT);
+
+/** 保存の前に、テキストの文字の形（パス）を作っておく。作れなかったテキストの数を返す */
+const buildOutlines = async (target: model.Doc) => {
+  let failed = 0;
+  for (const layer of target.layers) {
+    if (layer.type !== "text") continue;
+    // 標準のフォントはどの端末でも使えるので、パスは要らない
+    if (
+      layer.runs.every((run) => run.style.font.source === "builtin") ||
+      !text.plainText(layer.runs).trim()
+    ) {
+      layer.outline = null;
+      continue;
+    }
+    if (layer.outline?.key === text.outlineKey(layer)) continue;
+    await render.loadFonts(layer).catch(() => undefined);
+    const built = await outline.build(layer).catch(() => null);
+    layer.outline = built;
+    if (!built) failed++;
+  }
+  return failed;
 };
 
 export const mount = (root: HTMLElement) => {
@@ -171,6 +232,12 @@ export const mount = (root: HTMLElement) => {
   const snapButton = $<HTMLButtonElement>(root, '[data-action="snap"]');
   const undoButton = $<HTMLButtonElement>(root, '[data-action="undo"]');
   const redoButton = $<HTMLButtonElement>(root, '[data-action="redo"]');
+  const rich = $<HTMLElement>(root, "#rich");
+  const stageText = $<HTMLElement>(root, "#stage-text");
+  const fontName = $<HTMLElement>(root, "#font-name");
+  const fontMissing = $<HTMLElement>(root, "#font-missing");
+  const fontDialog = $<HTMLDialogElement>(root, "#font-dialog");
+  const picker = fontpicker.create(fontDialog, signal);
 
   // ---- 状態 ----
   let doc: model.Doc | null = null;
@@ -186,6 +253,11 @@ export const mount = (root: HTMLElement) => {
   const camera = { scale: 1, x: 0, y: 0, fit: true };
   let drag: Drag | null = null;
   const pointers = new Map<number, { x: number; y: number }>();
+  /** キャンバス上で編集中のテキストレイヤー */
+  let editingId: string | null = null;
+  /** 書式を適用する文字の範囲（編集欄から離れてボタンなどを押しても覚えておく）。null は全体 */
+  let charRange: { start: number; end: number } | null = null;
+  let lastTap: { id: string; time: number } | null = null;
 
   const selected = () =>
     doc?.layers.find((layer) => layer.id === selectedId) ?? null;
@@ -232,6 +304,8 @@ export const mount = (root: HTMLElement) => {
   const restore = (index: number) => {
     const state = history[index];
     if (state === undefined) return;
+    closeStageText();
+    charRange = null;
     historyIndex = index;
     doc = JSON.parse(state) as model.Doc;
     if (!selected()) selectedId = null;
@@ -241,9 +315,12 @@ export const mount = (root: HTMLElement) => {
   };
 
   const undo = () => {
+    // 入力中の文字を履歴に積んでから戻す
+    finishEditing();
     if (historyIndex > 0) restore(historyIndex - 1);
   };
   const redo = () => {
+    finishEditing();
     if (historyIndex < history.length - 1) restore(historyIndex + 1);
   };
 
@@ -357,8 +434,9 @@ export const mount = (root: HTMLElement) => {
     context.translate(camera.x, camera.y);
     context.scale(camera.scale, camera.scale);
     context.imageSmoothingQuality = "high";
-    render.drawLayers(context, doc, assets, cache);
+    render.drawLayers(context, doc, assets, cache, editingId);
     context.restore();
+    positionStageText();
 
     // スナップのガイド
     context.save();
@@ -533,11 +611,13 @@ export const mount = (root: HTMLElement) => {
     if (handle.includes("s")) bottom = Math.max(bottom, top + 1);
 
     const corner = handle.length === 2;
-    // 画像とテキストは角のハンドルで縦横比を保つ（Shift で切り替え）。図形は Shift で保つ
+    // 画像とパスは角のハンドルで縦横比を保つ（Shift で切り替え）。テキストは常に、図形は Shift で保つ
     const keepRatio =
       corner &&
       (layer.type === "text" ||
-        (layer.type === "image" ? !event.shiftKey : event.shiftKey));
+        (layer.type === "image" || layer.type === "path"
+          ? !event.shiftKey
+          : event.shiftKey));
     if (keepRatio) {
       const scale = Math.max(
         (right - left) / origin.width,
@@ -555,12 +635,17 @@ export const mount = (root: HTMLElement) => {
 
     if (layer.type === "text" && origin.type === "text") {
       const scale = (right - left) / origin.width;
-      layer.fontSize = Math.max(
-        1,
-        Math.round(origin.fontSize * scale * 10) / 10,
-      );
+      layer.runs = text.scaleRuns(origin.runs, scale);
       layer.strokeWidth = Math.round(origin.strokeWidth * scale * 10) / 10;
-      const size = render.measureText(layer);
+      // フォントが無くパスで表示しているときは、パスも一緒に拡大・縮小する
+      layer.outline =
+        origin.outline && text.usesOutline(origin)
+          ? {
+              key: text.outlineKey(layer),
+              ...text.scaleOutline(origin.outline, scale),
+            }
+          : null;
+      const size = text.measure(layer);
       layer.width = size.width;
       layer.height = size.height;
       layer.x = Math.round(
@@ -607,7 +692,11 @@ export const mount = (root: HTMLElement) => {
 
   stage.addEventListener("pointerdown", (event) => {
     if (!doc) return;
+    // キャンバス上の編集欄の中では、文字の選択をブラウザに任せる
+    if (event.target instanceof Node && stageText.contains(event.target))
+      return;
     if (event.button !== 0 && event.pointerType === "mouse") return;
+    finishEditing();
     stage.setPointerCapture(event.pointerId);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 2) {
@@ -728,6 +817,22 @@ export const mount = (root: HTMLElement) => {
       return;
     }
     if (drag.kind === "pan" && !drag.moved) select(null);
+    // タッチでは、同じテキストを 2 回続けてタップしたらその場で編集する
+    if (drag.kind === "move" && !drag.moved && event.pointerType !== "mouse") {
+      const now = performance.now();
+      const layer = selected();
+      if (
+        layer?.type === "text" &&
+        lastTap?.id === layer.id &&
+        now - lastTap.time < DOUBLE_TAP
+      ) {
+        drag = null;
+        lastTap = null;
+        startEditing(layer);
+        return;
+      }
+      lastTap = { id: drag.id, time: now };
+    }
     const finished = drag;
     drag = null;
     guides = { xs: [], ys: [] };
@@ -746,14 +851,11 @@ export const mount = (root: HTMLElement) => {
   });
 
   stage.addEventListener("dblclick", (event) => {
+    if (event.target instanceof Node && stageText.contains(event.target))
+      return;
     const point = toDoc(event.clientX, event.clientY);
     const hit = hitLayer(point.x, point.y);
-    if (hit?.type !== "text") return;
-    select(hit.id);
-    const textarea =
-      props.querySelector<HTMLTextAreaElement>('[data-prop="text"]');
-    textarea?.focus();
-    textarea?.select();
+    if (hit?.type === "text") startEditing(hit);
   });
 
   stage.addEventListener(
@@ -789,6 +891,8 @@ export const mount = (root: HTMLElement) => {
 
   // ---- 選択とパネル ----
   const select = (id: string | null) => {
+    if (editingId && editingId !== id) finishEditing();
+    if (id !== selectedId) charRange = null;
     selectedId = id;
     renderLayerList();
     syncPanel();
@@ -910,13 +1014,14 @@ export const mount = (root: HTMLElement) => {
   function syncGeometry() {
     const layer = selected();
     if (!layer) return;
-    for (const key of ["x", "y", "width", "height", "fontSize"] as const) {
+    for (const key of ["x", "y", "width", "height"] as const) {
       const input = props.querySelector<HTMLInputElement>(
         `[data-prop="${key}"]`,
       );
       if (input && document.activeElement !== input && key in layer)
         input.value = String(readProp(layer, key));
     }
+    if (layer.type === "text") syncCharControls();
   }
 
   /** 選択中のレイヤーの値をパネルに反映する */
@@ -949,6 +1054,14 @@ export const mount = (root: HTMLElement) => {
       );
       if (input) input.disabled = layer.type === "text";
     }
+    if (layer.type === "text") {
+      if (document.activeElement !== rich) renderPanelText(layer);
+      syncCharControls();
+      syncFontInfo(layer);
+      showHighlight();
+    }
+    if (layer.type === "path")
+      pathFill.value = layer.parts[0]?.color ?? "#ffffff";
   }
 
   const docInput = (name: string) =>
@@ -964,16 +1077,382 @@ export const mount = (root: HTMLElement) => {
     docInput("background").disabled = doc.background === null;
   }
 
-  const textChanged = (layer: model.Layer) => {
-    if (layer.type !== "text") return;
-    render.fitText(layer);
-    // 新しく使う文字のフォントを読み込んだら、測り直して描き直す
-    void render.loadFont(layer).then(() => {
-      cache.fontVersion++;
-      const current = doc?.layers.find((l) => l.id === layer.id);
-      if (current?.type === "text" && render.fitText(current)) syncGeometry();
-      requestDraw();
+  // ---- テキストの編集（パネルの編集欄と、キャンバス上の編集欄） ----
+  const pathFill = $<HTMLInputElement>(props, '[data-path="fill"]');
+
+  const textLayer = () => {
+    const layer = selected();
+    return layer?.type === "text" ? layer : null;
+  };
+
+  /** 書式を適用する範囲がある編集欄（キャンバス上で編集中ならそちら） */
+  const activeEditor = () => (editingId ? stageText : rich);
+
+  /** パネルの編集欄は、一番大きな文字が 22px 程度になるように縮めて見せる */
+  const renderPanelText = (layer: model.TextLayer) => {
+    richedit.render(rich, layer.runs, {
+      scale: Math.min(1, 22 / text.maxSize(layer.runs)),
+      lineHeight: layer.lineHeight,
+      effects: effectsOf(layer),
     });
+    rich.style.textAlign = layer.align;
+    rich.classList.toggle("rich--dark", isLight(layer.runs[0]!.style.color));
+  };
+
+  let stageTextScale = 0;
+  const renderStageText = (layer: model.TextLayer) => {
+    stageTextScale = camera.scale;
+    richedit.render(stageText, layer.runs, {
+      scale: camera.scale,
+      lineHeight: layer.lineHeight,
+      effects: effectsOf(layer),
+    });
+    stageText.style.textAlign = layer.align;
+  };
+
+  /** 書式を変えたあと、両方の編集欄を作り直す（入力中の編集欄の選択範囲は保つ） */
+  const renderEditors = (layer: model.TextLayer) => {
+    for (const editor of editingId ? [rich, stageText] : [rich]) {
+      const focused = document.activeElement === editor;
+      const range = focused ? richedit.getSelection(editor) : null;
+      if (editor === rich) renderPanelText(layer);
+      else renderStageText(layer);
+      if (range) richedit.setSelection(editor, range.start, range.end);
+    }
+    showHighlight();
+  };
+
+  /** キャンバス上の編集欄を、レイヤーの位置と揃えに合わせて置く */
+  function positionStageText() {
+    if (!editingId || !doc) return;
+    const layer = doc.layers.find((l) => l.id === editingId);
+    if (layer?.type !== "text") {
+      closeStageText();
+      return;
+    }
+    if (stageTextScale !== camera.scale) renderEditors(layer);
+    const anchor =
+      layer.align === "left" ? 0 : layer.align === "center" ? 0.5 : 1;
+    const p = toScreen(layer.x, layer.y);
+    const x =
+      p.x + (layer.width * camera.scale - stageText.offsetWidth) * anchor;
+    stageText.style.translate = `${Math.round(x)}px ${Math.round(p.y)}px`;
+  }
+
+  /** 編集欄から離れている間も、書式を変える範囲に色を付けておく */
+  function showHighlight() {
+    const registry = highlights();
+    if (!registry) return;
+    const editor = activeEditor();
+    if (
+      !charRange ||
+      charRange.start >= charRange.end ||
+      document.activeElement === editor
+    ) {
+      registry.delete(HIGHLIGHT);
+      return;
+    }
+    registry.set(
+      HIGHLIGHT,
+      new Highlight(richedit.rangeOf(editor, charRange.start, charRange.end)),
+    );
+  }
+
+  /** 書式の欄（フォント・大きさ・色・太字）に、選んでいる文字の書式を出す */
+  function syncCharControls() {
+    const layer = textLayer();
+    if (!layer) return;
+    const start = charRange?.start ?? 0;
+    const end = charRange?.end ?? 0;
+    const styles = text.stylesIn(layer.runs, start, end);
+    const style = styles[0]!;
+    const sizeInput = $<HTMLInputElement>(props, '[data-char="size"]');
+    if (document.activeElement !== sizeInput)
+      sizeInput.value = String(style.size);
+    $<HTMLInputElement>(props, '[data-char="color"]').value = style.color;
+    $<HTMLInputElement>(props, '[data-char="bold"]').checked = styles.every(
+      (s) => s.bold,
+    );
+    const mixed = styles.some((s) => !fonts.sameFont(s.font, style.font));
+    fontName.textContent = `${style.font.family}${mixed ? " ほか" : ""}`;
+    fontName.style.fontFamily = fonts.cssFamily(style.font);
+  }
+
+  /** この端末で使えないフォントがあれば知らせる */
+  function syncFontInfo(layer: model.TextLayer) {
+    const missing = [
+      ...new Set(
+        layer.runs
+          .filter((run) => fonts.status(run.style.font) === "missing")
+          .map((run) => run.style.font.family),
+      ),
+    ];
+    fontMissing.hidden = missing.length === 0;
+    if (missing.length === 0) return;
+    const names = missing.map((name) => `「${name}」`).join("");
+    fontMissing.textContent = text.usesOutline(layer)
+      ? `${names}はこの端末で使えないため、保存されたパス（文字の形）で表示しています。文字を編集すると代わりのフォントで表示されるので、先にフォントを選び直すか、「ファイル」からフォントを読み込んでください。`
+      : `${names}はこの端末で使えないため、代わりのフォントで表示しています。フォントを選び直すか、「ファイル」からフォントを読み込んでください。`;
+  }
+
+  /** 選んでいる文字（無ければテキスト全体）に書式を適用する */
+  const applyChar = (patch: Partial<model.CharStyle>) => {
+    const layer = textLayer();
+    if (!layer) return;
+    const editor = activeEditor();
+    const range =
+      (document.activeElement === editor
+        ? richedit.getSelection(editor)
+        : null) ?? charRange;
+    layer.runs = text.applyStyle(
+      layer.runs,
+      range?.start ?? 0,
+      range?.end ?? 0,
+      patch,
+    );
+    textChanged(layer);
+    renderEditors(layer);
+    syncGeometry();
+    syncFontInfo(layer);
+    requestDraw();
+  };
+
+  let commitTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 文字の入力は、少し間が空いたところで履歴に積む */
+  const scheduleCommit = () => {
+    clearTimeout(commitTimer);
+    commitTimer = setTimeout(commit, 600);
+  };
+
+  const onTextInput = (editor: HTMLElement, event: Event) => {
+    const layer = textLayer();
+    if (!layer) return;
+    // 書式の無い文字（全部消してから入力した文字など）は、直前にカーソルがあった位置の書式にする
+    const fallback = text.styleAt(
+      layer.runs,
+      Math.max(0, (charRange?.start ?? 1) - 1),
+    );
+    layer.runs = richedit.read(editor, fallback);
+    // 変換中（IME）は DOM を作り直さない
+    if (!(event as InputEvent).isComposing && !richedit.isClean(editor)) {
+      const range = richedit.getSelection(editor);
+      if (editor === rich) renderPanelText(layer);
+      else renderStageText(layer);
+      if (range) richedit.setSelection(editor, range.start, range.end);
+    }
+    textChanged(layer);
+    if (editor === stageText) renderPanelText(layer);
+    syncGeometry();
+    requestDraw();
+    scheduleCommit();
+  };
+
+  for (const editor of [rich, stageText]) {
+    editor.addEventListener("input", (event) => onTextInput(editor, event));
+    editor.addEventListener("compositionend", (event) =>
+      onTextInput(editor, event),
+    );
+    editor.addEventListener("focusout", () => {
+      clearTimeout(commitTimer);
+      commit();
+    });
+    // 貼り付けは書式なしの文字だけにする
+    editor.addEventListener("paste", (event) => {
+      event.preventDefault();
+      const value = event.clipboardData?.getData("text/plain") ?? "";
+      document.execCommand("insertText", false, value.replace(/\r\n?/g, "\n"));
+    });
+    editor.addEventListener("drop", (event) => event.preventDefault());
+    editor.addEventListener("keydown", (event) => {
+      const mod = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      // ブラウザの太字・斜体・下線（<b> などを入れる）の代わりに、書式の太字を切り替える
+      if (mod && (key === "b" || key === "i" || key === "u")) {
+        event.preventDefault();
+        if (key === "b") {
+          const layer = textLayer();
+          const range = richedit.getSelection(editor);
+          if (!layer) return;
+          const styles = text.stylesIn(
+            layer.runs,
+            range?.start ?? 0,
+            range?.end ?? 0,
+          );
+          applyChar({ bold: !styles.every((s) => s.bold) });
+          commit();
+          syncCharControls();
+        }
+        return;
+      }
+      if (key === "escape" && editor === stageText) {
+        event.preventDefault();
+        finishEditing();
+        stage.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  document.addEventListener(
+    "selectionchange",
+    () => {
+      const editor = activeEditor();
+      if (document.activeElement !== editor) return;
+      const range = richedit.getSelection(editor);
+      if (!range) return;
+      charRange = range;
+      syncCharControls();
+    },
+    { signal },
+  );
+
+  // 書式の欄やフォントのダイアログに移ったときは、選んでいた文字の範囲を保つ。それ以外に移ったら忘れる
+  document.addEventListener(
+    "focusin",
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const editor = activeEditor();
+      if (target === editor) {
+        clearHighlight();
+        return;
+      }
+      if (target.closest("[data-char], #font-button, #font-dialog")) {
+        showHighlight();
+        return;
+      }
+      if (editingId) finishEditing();
+      if (target !== rich) {
+        charRange = null;
+        clearHighlight();
+        syncCharControls();
+      }
+    },
+    { signal },
+  );
+
+  /** キャンバス上の編集欄を閉じる（履歴には積まない） */
+  function closeStageText() {
+    if (!editingId) return;
+    editingId = null;
+    stageText.hidden = true;
+    stageText.replaceChildren();
+    clearHighlight();
+    requestDraw();
+  }
+
+  /** キャンバス上の編集を終える */
+  function finishEditing() {
+    if (!editingId) return;
+    clearTimeout(commitTimer);
+    closeStageText();
+    charRange = null;
+    commit();
+    syncPanel();
+  }
+
+  /** テキストをキャンバス上で、その場で編集する */
+  function startEditing(layer: model.TextLayer) {
+    if (editingId === layer.id) return;
+    finishEditing();
+    if (selectedId !== layer.id) select(layer.id);
+    editingId = layer.id;
+    stageText.hidden = false;
+    renderStageText(layer);
+    positionStageText();
+    stageText.focus({ preventScroll: true });
+    // 文字をすべて選んでおき、そのまま入力すると置き換わるようにする
+    richedit.setSelection(stageText, 0, richedit.length(stageText));
+    requestDraw();
+  }
+
+  const pickFont = async () => {
+    const layer = textLayer();
+    if (!layer) return;
+    const range = charRange;
+    const current = text.stylesIn(
+      layer.runs,
+      range?.start ?? 0,
+      range?.end ?? 0,
+    )[0]!;
+    const font = await picker.open(current.font);
+    if (!font || textLayer() !== layer) return;
+    charRange = range;
+    applyChar({ font });
+    commit();
+    syncCharControls();
+  };
+
+  // フォントを読み込めたら（または読み込めなかったら）、テキストを測り直して描き直す
+  let fontTimer: ReturnType<typeof setTimeout> | undefined;
+  const unsubscribeFonts = fonts.subscribe(() => {
+    if (!doc) return;
+    let moved = false;
+    for (const layer of doc.layers)
+      if (layer.type === "text" && render.fitText(layer)) moved = true;
+    if (moved) syncGeometry();
+    const layer = textLayer();
+    if (layer) {
+      syncFontInfo(layer);
+      syncCharControls();
+    }
+    requestDraw();
+    // レイヤーの一覧のサムネイルは、まとめて描き直す
+    clearTimeout(fontTimer);
+    fontTimer = setTimeout(renderLayerList, 150);
+  });
+  signal.addEventListener("abort", () => {
+    unsubscribeFonts();
+    clearTimeout(fontTimer);
+    clearTimeout(commitTimer);
+  });
+
+  /** テキストを、文字の形のパスのレイヤーにする */
+  const convertToPath = async () => {
+    const layer = textLayer();
+    if (!layer || !doc) return;
+    finishEditing();
+    notify("パスに変換しています…");
+    let shape = text.usesOutline(layer) ? layer.outline : null;
+    if (!shape) {
+      await render.loadFonts(layer).catch(() => undefined);
+      render.fitText(layer);
+      shape = await outline.build(layer).catch(() => null);
+    }
+    const index = doc?.layers.indexOf(layer) ?? -1;
+    if (!doc || index < 0) return;
+    if (!shape || shape.parts.length === 0) {
+      notify(
+        shape
+          ? "文字が無いので、パスに変換できませんでした。"
+          : "フォントのデータを読めない文字があるため、パスに変換できませんでした。",
+        true,
+      );
+      return;
+    }
+    const path: model.PathLayer = {
+      id: layer.id,
+      name: layer.name,
+      visible: layer.visible,
+      opacity: layer.opacity,
+      x: layer.x,
+      y: layer.y,
+      width: shape.width,
+      height: shape.height,
+      filters: layer.filters,
+      type: "path",
+      baseWidth: shape.width,
+      baseHeight: shape.height,
+      parts: shape.parts,
+      size: text.maxSize(layer.runs),
+      strokeColor: layer.strokeColor,
+      strokeWidth: layer.strokeWidth,
+      shadow: layer.shadow,
+    };
+    doc.layers[index] = path;
+    commit();
+    syncPanel();
+    requestDraw();
+    notify("パスに変換しました。");
   };
 
   props.addEventListener("input", (event) => {
@@ -984,9 +1463,35 @@ export const mount = (root: HTMLElement) => {
       input instanceof HTMLSelectElement
     ))
       return;
-    const path = input.dataset["prop"];
     const layer = selected();
-    if (!path || !layer) return;
+    if (!layer) return;
+    // 文字ごとの書式
+    const char = input.dataset["char"];
+    if (char && input instanceof HTMLInputElement) {
+      if (char === "size") {
+        const size = Number(input.value);
+        if (
+          input.value === "" ||
+          !input.checkValidity() ||
+          !Number.isFinite(size)
+        )
+          return;
+        applyChar({ size });
+      } else if (char === "color") applyChar({ color: input.value });
+      else if (char === "bold") applyChar({ bold: input.checked });
+      return;
+    }
+    // パスの塗りは、すべての文字の色をまとめて変える
+    if (input === pathFill && layer.type === "path") {
+      layer.parts = layer.parts.map((part) => ({
+        ...part,
+        color: input.value,
+      }));
+      requestDraw();
+      return;
+    }
+    const path = input.dataset["prop"];
+    if (!path) return;
     let value: unknown;
     if (input instanceof HTMLInputElement && input.type === "checkbox")
       value = input.checked;
@@ -1005,8 +1510,11 @@ export const mount = (root: HTMLElement) => {
     writeProp(layer, path, value);
     if (path === "width" || path === "height")
       writeProp(layer, path, Math.max(1, Math.round(value as number)));
-    textChanged(layer);
-    if (path === "fontSize" || path === "text") syncGeometry();
+    if (layer.type === "text") {
+      textChanged(layer);
+      renderEditors(layer);
+      syncGeometry();
+    }
     if (path === "name") {
       const name = layerList.querySelector(
         `.layer[data-id="${CSS.escape(layer.id)}"] .layer__name`,
@@ -1096,6 +1604,8 @@ export const mount = (root: HTMLElement) => {
     confirm("保存していない変更があります。破棄してよろしいですか？");
 
   const startDoc = (next: model.Doc, handle: project.FileHandle | null) => {
+    closeStageText();
+    charRange = null;
     doc = next;
     fileHandle = handle;
     selectedId = null;
@@ -1225,16 +1735,18 @@ export const mount = (root: HTMLElement) => {
 
   const addText = () => {
     if (!doc) return;
-    const layer = model.createText(doc);
+    // 前に選んでいたテキストの書式を引き継ぐ
+    const previous = textLayer();
+    const style = previous
+      ? { ...previous.runs[0]!.style, size: text.maxSize(previous.runs) }
+      : undefined;
+    const layer = model.createText(doc, style);
     render.fitText(layer);
     layer.x = Math.round((doc.width - layer.width) / 2);
     layer.y = Math.round((doc.height - layer.height) / 2);
     addLayer(layer);
     textChanged(layer);
-    const textarea =
-      props.querySelector<HTMLTextAreaElement>('[data-prop="text"]');
-    textarea?.focus({ preventScroll: true });
-    textarea?.select();
+    startEditing(layer);
   };
 
   // ---- 保存と書き出し ----
@@ -1243,7 +1755,11 @@ export const mount = (root: HTMLElement) => {
     if (!doc || saving) return;
     saving = true;
     try {
+      // 入力中の文字も履歴に積んでから保存する
+      clearTimeout(commitTimer);
+      commit();
       const index = historyIndex;
+      const failed = await buildOutlines(doc);
       const blob = await project.serialize(doc, assets);
       const result = await project.save(
         blob,
@@ -1254,9 +1770,16 @@ export const mount = (root: HTMLElement) => {
       fileHandle = result;
       savedIndex = index;
       notify(
-        result
-          ? `${result.name} に保存しました。`
-          : "作品ファイルをダウンロードしました。",
+        `${
+          result
+            ? `${result.name} に保存しました。`
+            : "作品ファイルをダウンロードしました。"
+        }${
+          failed > 0
+            ? "フォントのデータを読めないテキストがあったため、そのテキストの文字の形（パス）は保存していません。"
+            : ""
+        }`,
+        failed > 0,
       );
     } catch {
       notify("保存できませんでした。", true);
@@ -1468,6 +1991,8 @@ export const mount = (root: HTMLElement) => {
     "layer-down": () => moveLayer(-1),
     "layer-duplicate": duplicate,
     "layer-delete": remove,
+    "pick-font": () => void pickFont(),
+    "to-path": () => void convertToPath(),
   };
 
   root.addEventListener("click", (event) => {
@@ -1483,7 +2008,7 @@ export const mount = (root: HTMLElement) => {
   document.addEventListener(
     "keydown",
     (event) => {
-      if (newDialog.open || exportDialog.open) return;
+      if (newDialog.open || exportDialog.open || fontDialog.open) return;
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       if (mod && key === "s") {
@@ -1518,7 +2043,13 @@ export const mount = (root: HTMLElement) => {
         duplicate();
         return;
       }
-      if (!selected()) return;
+      const current = selected();
+      if (!current) return;
+      if (key === "enter" && current.type === "text") {
+        event.preventDefault();
+        startEditing(current);
+        return;
+      }
       if (key === "delete" || key === "backspace") {
         event.preventDefault();
         remove();
