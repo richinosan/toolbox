@@ -1,6 +1,7 @@
 // IMAGE のエディター本体。ページの要素に操作を結び付け、ドキュメントの状態・履歴・描画を管理する。
 import * as motion from "#ui/motion.ts";
 import * as exporter from "./exporter";
+import * as filters from "./filters";
 import * as fontpicker from "./fontpicker";
 import * as fonts from "./fonts";
 import * as model from "./model";
@@ -189,16 +190,19 @@ const resizeCrop = (
   dy: number,
   ratio: number | null,
 ): snap.Box => {
+  // ドキュメントが最小の大きさより小さいときは、ドキュメントの大きさまで
+  const minWidth = Math.min(MIN_CROP, doc.width);
+  const minHeight = Math.min(MIN_CROP, doc.height);
   let left = origin.x;
   let top = origin.y;
   let right = origin.x + origin.width;
   let bottom = origin.y + origin.height;
-  if (handle.includes("w")) left = model.clamp(left + dx, 0, right - MIN_CROP);
+  if (handle.includes("w")) left = model.clamp(left + dx, 0, right - minWidth);
   if (handle.includes("e"))
-    right = model.clamp(right + dx, left + MIN_CROP, doc.width);
-  if (handle.includes("n")) top = model.clamp(top + dy, 0, bottom - MIN_CROP);
+    right = model.clamp(right + dx, left + minWidth, doc.width);
+  if (handle.includes("n")) top = model.clamp(top + dy, 0, bottom - minHeight);
   if (handle.includes("s"))
-    bottom = model.clamp(bottom + dy, top + MIN_CROP, doc.height);
+    bottom = model.clamp(bottom + dy, top + minHeight, doc.height);
   if (ratio) {
     // 小さい方に合わせて縮めるので、ドキュメントからはみ出さない
     let width = right - left;
@@ -212,6 +216,28 @@ const resizeCrop = (
   }
   return { x: left, y: top, width: right - left, height: bottom - top };
 };
+
+/** 画像レイヤーのうち、枠（とぼかしで広がる分）にかかる範囲。レイヤーの左上からの px */
+const imageClip = (layer: model.ImageLayer, box: snap.Box): snap.Box => {
+  const margin = 1 + filters.blurPadding(layer.filters.blur);
+  const left = Math.max(0, Math.floor(box.x - layer.x - margin));
+  const top = Math.max(0, Math.floor(box.y - layer.y - margin));
+  const right = Math.min(
+    layer.width,
+    Math.ceil(box.x + box.width - layer.x + margin),
+  );
+  const bottom = Math.min(
+    layer.height,
+    Math.ceil(box.y + box.height - layer.y + margin),
+  );
+  return { x: left, y: top, width: right - left, height: bottom - top };
+};
+
+/** canvas に描ける大きさか（iOS Safari の上限に合わせる） */
+const withinCanvasLimit = (width: number, height: number) =>
+  width <= model.MAX_SIDE &&
+  height <= model.MAX_SIDE &&
+  width * height <= model.MAX_AREA;
 
 /** レイヤーを scale 倍にする（切り抜いたあと、決まった大きさに合わせるとき） */
 const scaleLayer = (layer: model.Layer, scale: number) => {
@@ -1891,36 +1917,135 @@ export const mount = (root: HTMLElement) => {
     requestDraw();
   }
 
-  const applyCrop = () => {
-    const result = cropResult();
-    if (!doc || !crop || !result) return;
-    if (result.fit) {
-      // 丸める前の枠で拡大・縮小する。丸めると比率がずれて、端が欠けたり枠の外が見えたりする
-      const scale = result.fit[0] / crop.width;
-      for (const layer of doc.layers) {
-        layer.x -= crop.x;
-        layer.y -= crop.y;
+  /** 画像の clip の範囲だけを、元の解像度で新しい画像にする */
+  const clipAsset = async (layer: model.ImageLayer, clip: snap.Box) => {
+    const asset = assets.get(layer.asset);
+    if (!asset) return null;
+    const sx = asset.image.width / layer.width;
+    const sy = asset.image.height / layer.height;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(clip.width * sx));
+    canvas.height = Math.max(1, Math.round(clip.height * sy));
+    canvas
+      .getContext("2d")!
+      .drawImage(
+        asset.image,
+        clip.x * sx,
+        clip.y * sy,
+        clip.width * sx,
+        clip.height * sy,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+    const type = ["image/jpeg", "image/webp"].includes(asset.blob.type)
+      ? asset.blob.type
+      : "image/png";
+    const blob = await exporter.toBlob(canvas, type, 0.95);
+    return addAsset(blob, await createImageBitmap(blob));
+  };
+
+  /**
+   * 決まった大きさに合わせて切り抜く。拡大するとレイヤーの枠の外の部分も大きくなるので、
+   * 画像は枠にかかる範囲だけを残す。それでも canvas の上限を超えるときは null
+   */
+  const cropToFit = async (
+    target: model.Doc,
+    box: snap.Box,
+    fit: readonly [number, number],
+  ) => {
+    // 丸める前の枠で拡大・縮小する。丸めると比率がずれて、端が欠けたり枠の外が見えたりする
+    const scale = fit[0] / box.width;
+    const clips = new Map<string, snap.Box>();
+    for (const layer of target.layers)
+      if (layer.type === "image") clips.set(layer.id, imageClip(layer, box));
+    const visible = (size: snap.Box) => size.width > 0 && size.height > 0;
+    const fits = target.layers.every((layer) => {
+      const size = clips.get(layer.id) ?? layer;
+      return (
+        !visible(size) ||
+        withinCanvasLimit(size.width * scale, size.height * scale)
+      );
+    });
+    if (!fits) return null;
+    const replaced = new Map<string, string>();
+    for (const layer of target.layers) {
+      const clip = clips.get(layer.id);
+      if (
+        layer.type !== "image" ||
+        !clip ||
+        !visible(clip) ||
+        (clip.width === layer.width && clip.height === layer.height)
+      )
+        continue;
+      const asset = await clipAsset(layer, clip);
+      if (asset) replaced.set(layer.id, asset);
+    }
+    return () => {
+      // 枠にかからない画像レイヤーは消す
+      target.layers = target.layers.filter((layer) => {
+        const clip = clips.get(layer.id);
+        return !clip || visible(clip);
+      });
+      for (const layer of target.layers) {
+        const clip = clips.get(layer.id);
+        const asset = replaced.get(layer.id);
+        if (layer.type === "image" && clip && asset) {
+          layer.asset = asset;
+          layer.x += clip.x;
+          layer.y += clip.y;
+          layer.width = clip.width;
+          layer.height = clip.height;
+        }
+        layer.x -= box.x;
+        layer.y -= box.y;
         scaleLayer(layer, scale);
       }
-      doc.width = result.fit[0];
-      doc.height = result.fit[1];
-    } else {
-      const x = Math.round(crop.x);
-      const y = Math.round(crop.y);
-      for (const layer of doc.layers) {
+      target.width = fit[0];
+      target.height = fit[1];
+    };
+  };
+
+  const applyCrop = async () => {
+    const result = cropResult();
+    if (!doc || !crop || !result) return;
+    const target = doc;
+    const box = crop;
+    crop = null;
+    drag = null;
+    syncPanel();
+    let apply: (() => void) | null = null;
+    if (result.fit) {
+      try {
+        apply = await cropToFit(target, box, result.fit);
+      } catch {
+        apply = null;
+      }
+      // 画像を作っているあいだに別のファイルを開いたとき
+      if (doc !== target) return;
+      crop = null;
+    }
+    if (apply) apply();
+    else {
+      const x = Math.round(box.x);
+      const y = Math.round(box.y);
+      for (const layer of target.layers) {
         layer.x -= x;
         layer.y -= y;
       }
-      doc.width = Math.min(result.width, doc.width - x);
-      doc.height = Math.min(result.height, doc.height - y);
+      target.width = Math.min(result.width, target.width - x);
+      target.height = Math.min(result.height, target.height - y);
     }
-    crop = null;
-    drag = null;
     commit();
     setStageRatio();
     fitCamera();
     refreshAll();
-    notify(`${doc.width} × ${doc.height} px に切り抜きました。`);
+    notify(
+      result.fit && !apply
+        ? `${result.fit[0]} × ${result.fit[1]} px に拡大できなかったため、${target.width} × ${target.height} px のまま切り抜きました。`
+        : `${target.width} × ${target.height} px に切り抜きました。`,
+    );
   };
 
   cropForm.addEventListener("submit", (event) => event.preventDefault());
@@ -2393,7 +2518,7 @@ export const mount = (root: HTMLElement) => {
     "layer-delete": remove,
     "pick-font": () => void pickFont(),
     crop: startCrop,
-    "crop-apply": applyCrop,
+    "crop-apply": () => void applyCrop(),
     "crop-cancel": cancelCrop,
     "to-path": () => void convertToPath(),
   };
@@ -2440,7 +2565,7 @@ export const mount = (root: HTMLElement) => {
         )
       ) {
         event.preventDefault();
-        if (key === "enter") applyCrop();
+        if (key === "enter") void applyCrop();
         else cancelCrop();
         return;
       }
