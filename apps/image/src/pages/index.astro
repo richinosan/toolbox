@@ -23,6 +23,7 @@ const icons = {
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
   snap: '<path d="M6 3v6a6 6 0 0 0 12 0V3"/><path d="M6 7h4M14 7h4"/>',
+  crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>',
 } as const;
 ---
 
@@ -45,8 +46,8 @@ const icons = {
   tour={[
     {
       target: "#add-tools",
-      title: "レイヤーを追加",
-      body: "画像・テキスト・四角・丸を、レイヤーとして重ねます。画像はキャンバスにドロップしたり、貼り付けたりしても追加できます。",
+      title: "レイヤーを追加・トリミング",
+      body: "画像・テキスト・四角・丸を、レイヤーとして重ねます。画像はキャンバスにドロップしたり、貼り付けたりしても追加できます。「トリミング」では、キャンバスを正方形・OGP・X・A4 などの比率に切り抜けます。",
     },
     {
       target: "#stage",
@@ -160,6 +161,16 @@ const icons = {
             />
             <span>丸</span>
           </button>
+          <button
+            class="tool tool--toggle ready-only"
+            type="button"
+            data-action="crop"
+            aria-pressed="false"
+            title="トリミング（キャンバスを切り抜く）"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.crop} />
+            <span>トリミング</span>
+          </button>
         </div>
         <div class="toolbar__group">
           <button
@@ -259,6 +270,22 @@ const icons = {
                 aria-label="全体を表示"
               >
                 全体
+              </button>
+            </div>
+            <div id="crop-bar" class="crop-bar" hidden>
+              <button
+                class="button button--small"
+                type="button"
+                data-action="crop-cancel"
+              >
+                キャンセル
+              </button>
+              <button
+                class="button button--small button--primary"
+                type="button"
+                data-action="crop-apply"
+              >
+                切り抜く
               </button>
             </div>
             <p id="toast" class="toast" role="status"></p>
@@ -374,6 +401,55 @@ const icons = {
               <p class="note">
                 レイヤーを選ぶと、そのレイヤーの設定に切り替わります。
               </p>
+            </form>
+
+            <form id="crop-props" class="fields" autocomplete="off" hidden>
+              <fieldset class="chips">
+                <legend class="field__label">比率</legend>
+                <div class="chips__options">
+                  {model.cropPresets.map((preset, i) => (
+                    <label class="chip">
+                      <input
+                        class="chip__input"
+                        type="radio"
+                        name="crop-preset"
+                        value={preset.id}
+                        checked={i === 0}
+                      />
+                      <span class="chip__label">
+                        {preset.label}
+                        {preset.size && (
+                          <span class="chip__sub">
+                            {preset.size[0]} × {preset.size[1]}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <p id="crop-size" class="crop-size" aria-live="polite"></p>
+              <label id="crop-fit" class="check" hidden>
+                <input type="checkbox" name="crop-fit" checked />
+                <span id="crop-fit-label"></span>
+              </label>
+              <p class="note">
+                枠をドラッグして位置を、角をドラッグして大きさを変えます。Enter
+                で切り抜き、Esc
+                でやめます。切り抜いたあとも「戻す」で元に戻せます。
+              </p>
+              <div class="crop-actions">
+                <button class="button" type="button" data-action="crop-cancel">
+                  キャンセル
+                </button>
+                <button
+                  class="button button--primary"
+                  type="button"
+                  data-action="crop-apply"
+                >
+                  切り抜く
+                </button>
+              </div>
             </form>
 
             <p class="note props-empty">
@@ -1159,6 +1235,7 @@ const icons = {
     font: inherit;
     font-size: 0.6875rem;
     line-height: 1.2;
+    white-space: nowrap;
     cursor: pointer;
   }
 
@@ -2093,5 +2170,51 @@ const icons = {
     margin-left: auto;
     color: var(--color-text-muted);
     font-size: 0.75rem;
+  }
+  /* ---- トリミング ---- */
+  .crop-bar {
+    position: absolute;
+    top: var(--space-2);
+    left: 50%;
+    z-index: 2;
+    display: flex;
+    gap: var(--space-2);
+    padding: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-surface);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
+    transform: translateX(-50%);
+  }
+
+  .crop-bar[hidden] {
+    display: none;
+  }
+
+  .crop-bar .button {
+    white-space: nowrap;
+  }
+
+  .chip__sub {
+    margin-left: 0.35em;
+    color: var(--color-text-muted);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .crop-size {
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .check[hidden] {
+    display: none;
+  }
+
+  .crop-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
   }
 </style>
