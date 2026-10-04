@@ -158,6 +158,14 @@ const highlights = () =>
     ? CSS.highlights
     : null;
 
+const MEGABYTE = 1_000_000;
+
+/** ファイルサイズを「0.98 MB」「320 KB」のように書く */
+const formatBytes = (bytes: number) =>
+  bytes >= MEGABYTE / 10
+    ? `${(bytes / MEGABYTE).toFixed(2)} MB`
+    : `${Math.max(1, Math.round(bytes / 1000))} KB`;
+
 const writeProp = (layer: model.Layer, path: string, value: unknown) => {
   if (path.startsWith("filters.")) {
     (layer.filters as Record<string, unknown>)[path.slice(8)] = value;
@@ -1794,20 +1802,48 @@ export const mount = (root: HTMLElement) => {
     ) / 100;
   const exportFormat = () =>
     (new FormData(exportForm).get("format") as exporter.Format | null) ?? "png";
+  const exportInput = (name: string) =>
+    exportForm.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+  /** サイズを指定して圧縮するときの上限。画質を指定するときや PNG・PSD では null */
+  const exportLimit = (): exporter.Limit | null => {
+    const format = exportFormat();
+    if (format !== "jpeg" && format !== "webp") return null;
+    if (new FormData(exportForm).get("mode") !== "size") return null;
+    const megabytes = Number(exportInput("limit").value);
+    if (!Number.isFinite(megabytes) || megabytes <= 0) return null;
+    return {
+      bytes: Math.floor(megabytes * MEGABYTE),
+      shrink: exportInput("shrink").checked,
+    };
+  };
 
   const syncExportForm = () => {
     const format = exportFormat();
-    const quality = exportForm.querySelector<HTMLElement>("#export-quality")!;
-    quality.hidden = format !== "jpeg" && format !== "webp";
+    const lossy = format === "jpeg" || format === "webp";
+    const bySize = new FormData(exportForm).get("mode") === "size";
+    exportForm.querySelector<HTMLElement>("#export-mode")!.hidden = !lossy;
+    exportForm.querySelector<HTMLElement>("#export-quality")!.hidden =
+      !lossy || bySize;
+    exportForm.querySelector<HTMLElement>("#export-limit")!.hidden =
+      !lossy || !bySize;
+    for (const chip of exportForm.querySelectorAll<HTMLElement>("[data-limit]"))
+      chip.setAttribute(
+        "aria-pressed",
+        String(
+          Number(chip.dataset["limit"]) === Number(exportInput("limit").value),
+        ),
+      );
     const note = exportForm.querySelector<HTMLElement>("#export-note")!;
     note.textContent =
-      format === "psd"
-        ? "レイヤーを保ったまま書き出します。テキストと図形は、フィルターを適用した画像のレイヤーになります。"
-        : format === "jpeg"
-          ? "透明な部分は白で塗りつぶします。"
-          : format === "png"
-            ? "透明な部分は透明のまま書き出します。"
-            : "透明な部分は透明のまま書き出します。対応していないブラウザでは PNG になります。";
+      lossy && bySize
+        ? `上限に収まる、一番きれいな画質を探して書き出します（1 MB = 1,000,000 バイト）。${format === "jpeg" ? "透明な部分は白で塗りつぶします。" : ""}`
+        : format === "psd"
+          ? "レイヤーを保ったまま書き出します。テキストと図形は、フィルターを適用した画像のレイヤーになります。"
+          : format === "jpeg"
+            ? "透明な部分は白で塗りつぶします。"
+            : format === "png"
+              ? "透明な部分は透明のまま書き出します。"
+              : "透明な部分は透明のまま書き出します。対応していないブラウザでは PNG になります。";
     const output = exportForm.querySelector<HTMLOutputElement>(
       'output[for="export-quality-input"]',
     );
@@ -1815,6 +1851,15 @@ export const mount = (root: HTMLElement) => {
   };
 
   exportForm.addEventListener("input", syncExportForm);
+  exportForm.addEventListener("click", (event) => {
+    const chip =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-limit]")
+        : null;
+    if (!chip) return;
+    exportInput("limit").value = chip.dataset["limit"]!;
+    syncExportForm();
+  });
   exportForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!doc) return;
@@ -1830,18 +1875,33 @@ export const mount = (root: HTMLElement) => {
         await exporter.copyImage(doc, assets, cache);
         notify("画像をクリップボードにコピーしました。");
       } else {
+        const limit = exportLimit();
+        const note = exportForm.querySelector<HTMLElement>("#export-note")!;
+        if (limit) note.textContent = "圧縮しています…";
         const result = await exporter.exportFile(
           doc,
           assets,
           cache,
           exportFormat(),
           exportQuality(),
+          limit,
         );
-        notify(
-          result.actual === result.requested
-            ? "書き出しました。"
-            : "このブラウザは WebP に対応していないため、PNG で書き出しました。",
-        );
+        const packed = result.compressed;
+        if (result.actual !== result.requested)
+          notify(
+            "このブラウザは WebP に対応していないため、PNG で書き出しました。",
+          );
+        else if (packed) {
+          const detail = `${formatBytes(result.size)}（画質 ${Math.round(packed.quality * 100)}%${
+            packed.shrunk ? `、${packed.width} × ${packed.height} に縮小` : ""
+          }）`;
+          notify(
+            packed.fitted
+              ? `${detail}で書き出しました。`
+              : `上限に収まりませんでした。一番小さくした ${detail}で書き出しました。`,
+            !packed.fitted,
+          );
+        } else notify(`${formatBytes(result.size)}で書き出しました。`);
       }
       exportDialog.close();
     } catch {
@@ -1853,6 +1913,7 @@ export const mount = (root: HTMLElement) => {
       );
     } finally {
       if (button) button.disabled = false;
+      syncExportForm();
     }
   });
 

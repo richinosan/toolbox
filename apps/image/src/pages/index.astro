@@ -66,7 +66,7 @@ const icons = {
     {
       target: "#file-tools",
       title: "保存と書き出し",
-      body: "保存（Ctrl+S）で作品ファイル（.tbimg）を端末に保存し、あとで開いて続きから編集できます。書き出しでは PNG・JPEG・WebP の画像や、レイヤー付きの PSD を保存します。",
+      body: "保存（Ctrl+S）で作品ファイル（.tbimg）を端末に保存し、あとで開いて続きから編集できます。書き出しでは PNG・JPEG・WebP の画像や、レイヤー付きの PSD を保存します。JPEG・WebP は「1 MB 以下」のようにファイルサイズの上限を指定して圧縮できます。",
     },
   ]}
 >
@@ -898,6 +898,59 @@ const icons = {
               ))}
             </div>
           </fieldset>
+          <fieldset id="export-mode" class="seg" hidden>
+            <legend class="field__label">圧縮</legend>
+            <div class="seg__options">
+              {[
+                ["quality", "画質を指定"],
+                ["size", "サイズを指定"],
+              ].map(([value, label], i) => (
+                <label class="seg__option">
+                  <input
+                    class="seg__input"
+                    type="radio"
+                    name="mode"
+                    value={value}
+                    checked={i === 0}
+                  />
+                  <span class="seg__label">{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div id="export-limit" class="fields" hidden>
+            <label class="field">
+              <span class="field__label">ファイルサイズの上限</span>
+              <span class="limit">
+                <input
+                  class="input"
+                  type="number"
+                  name="limit"
+                  value="1"
+                  min="0.01"
+                  max="100"
+                  step="0.01"
+                  inputmode="decimal"
+                />
+                <span>MB</span>
+              </span>
+            </label>
+            <div class="chips__options">
+              {["0.3", "0.5", "1", "2", "5"].map((value) => (
+                <button
+                  class="button button--small"
+                  type="button"
+                  data-limit={value}
+                >
+                  {value} MB
+                </button>
+              ))}
+            </div>
+            <label class="check">
+              <input type="checkbox" name="shrink" checked />
+              <span>画質を下げても収まらないときは、縦横の大きさも縮める</span>
+            </label>
+          </div>
           <div id="export-quality" class="range" hidden>
             <label class="field__label" for="export-quality-input">
               画質
@@ -1782,6 +1835,26 @@ const icons = {
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--space-2);
+  }
+
+  .seg[hidden] {
+    display: none;
+  }
+
+  [data-limit][aria-pressed="true"] {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    font-weight: 700;
+  }
+
+  .limit {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .limit .input {
+    max-width: 8rem;
   }
 
   .options {
