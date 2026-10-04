@@ -77,6 +77,19 @@ export type Rendered = {
   pad: number;
 };
 
+/** レイヤーを描く canvas が、レイヤーの枠からどれだけ外に広がるか（ぼかし・縁取りなど） */
+export const layerPadding = (layer: model.Layer) => {
+  const blurPad =
+    layer.type === "image" ? 0 : filters.blurPadding(layer.filters.blur);
+  return (
+    (layer.type === "text"
+      ? textPad(layer, text.maxSize(layer.runs))
+      : layer.type === "path"
+        ? textPad(layer, pathSize(layer))
+        : 0) + blurPad
+  );
+};
+
 /**
  * レイヤー 1 枚をフィルター込みで描く（位置・不透明度・表示は含まない）。
  * 画像はぼかしても枠の外に広げず端を延長し、図形とテキストは外側に広げる。
@@ -85,14 +98,7 @@ export const renderLayer = (
   layer: model.Layer,
   assets: model.Assets,
 ): Rendered => {
-  const blurPad =
-    layer.type === "image" ? 0 : filters.blurPadding(layer.filters.blur);
-  const pad =
-    (layer.type === "text"
-      ? textPad(layer, text.maxSize(layer.runs))
-      : layer.type === "path"
-        ? textPad(layer, pathSize(layer))
-        : 0) + blurPad;
+  const pad = layerPadding(layer);
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(layer.width) + pad * 2);
   canvas.height = Math.max(1, Math.round(layer.height) + pad * 2);

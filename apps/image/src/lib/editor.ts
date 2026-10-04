@@ -1939,10 +1939,8 @@ export const mount = (root: HTMLElement) => {
         canvas.width,
         canvas.height,
       );
-    const type = ["image/jpeg", "image/webp"].includes(asset.blob.type)
-      ? asset.blob.type
-      : "image/png";
-    const blob = await exporter.toBlob(canvas, type, 0.95);
+    // 編集中のデータなので、劣化しない PNG にする
+    const blob = await exporter.toBlob(canvas, "image/png");
     return addAsset(blob, await createImageBitmap(blob));
   };
 
@@ -1961,11 +1959,16 @@ export const mount = (root: HTMLElement) => {
     for (const layer of target.layers)
       if (layer.type === "image") clips.set(layer.id, imageClip(layer, box));
     const visible = (size: snap.Box) => size.width > 0 && size.height > 0;
+    // 描くときの canvas は、ぼかしや縁取りの分だけ外に広がる。それも一緒に拡大される
     const fits = target.layers.every((layer) => {
       const size = clips.get(layer.id) ?? layer;
+      const pad = render.layerPadding(layer) * 2;
       return (
         !visible(size) ||
-        withinCanvasLimit(size.width * scale, size.height * scale)
+        withinCanvasLimit(
+          (size.width + pad) * scale + 2,
+          (size.height + pad) * scale + 2,
+        )
       );
     });
     if (!fits) return null;
@@ -2017,6 +2020,7 @@ export const mount = (root: HTMLElement) => {
     let apply: (() => void) | null = null;
     if (result.fit) {
       const before = JSON.stringify(target);
+      const request = JSON.stringify(result);
       applyingCrop = true;
       try {
         apply = await cropToFit(target, box, result.fit);
@@ -2025,8 +2029,13 @@ export const mount = (root: HTMLElement) => {
       } finally {
         applyingCrop = false;
       }
-      // 画像を作っているあいだに編集したり、枠を動かしたり、トリミングをやめたりしたときは何もしない
-      if (doc !== target || crop !== box || JSON.stringify(target) !== before)
+      // 画像を作っているあいだに編集したり、枠や比率・拡大の設定を変えたり、トリミングをやめたりしたときは何もしない
+      if (
+        doc !== target ||
+        crop !== box ||
+        JSON.stringify(cropResult()) !== request ||
+        JSON.stringify(target) !== before
+      )
         return;
     }
     crop = null;
