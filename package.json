@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@fontsource/line-seed-jp": "^5.3.1",
+    "ag-psd": "^31.0.2",
     "astro": "^7.3.5",
+    "fontkit": "^2.0.4",
     "luxon": "^3.7.2"
   },
   "devDependencies": {
@@ -20,6 +22,7 @@
     "@types/luxon": "^3.7.6",
     "@cloudflare/build-output-utils": "0.8.4",
     "@cloudflare/config": "0.22.0",
+    "@types/fontkit": "^2.0.9",
     "@types/node": "^26.6.3",
     "oxlint": "^1.86.0",
     "prettier": "^3.9.9",
