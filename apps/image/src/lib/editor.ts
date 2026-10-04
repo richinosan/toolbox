@@ -2007,25 +2007,30 @@ export const mount = (root: HTMLElement) => {
     };
   };
 
+  let applyingCrop = false;
+
   const applyCrop = async () => {
     const result = cropResult();
-    if (!doc || !crop || !result) return;
+    if (!doc || !crop || !result || applyingCrop) return;
     const target = doc;
     const box = crop;
-    crop = null;
-    drag = null;
-    syncPanel();
     let apply: (() => void) | null = null;
     if (result.fit) {
+      const before = JSON.stringify(target);
+      applyingCrop = true;
       try {
         apply = await cropToFit(target, box, result.fit);
       } catch {
         apply = null;
+      } finally {
+        applyingCrop = false;
       }
-      // 画像を作っているあいだに別のファイルを開いたとき
-      if (doc !== target) return;
-      crop = null;
+      // 画像を作っているあいだに編集したり、枠を動かしたり、トリミングをやめたりしたときは何もしない
+      if (doc !== target || crop !== box || JSON.stringify(target) !== before)
+        return;
     }
+    crop = null;
+    drag = null;
     if (apply) apply();
     else {
       const x = Math.round(box.x);
