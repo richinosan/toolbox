@@ -2051,6 +2051,8 @@ export const mount = (root: HTMLElement) => {
       target.width = Math.min(result.width, target.width - x);
       target.height = Math.min(result.height, target.height - y);
     }
+    // 消した画像レイヤーの描画結果を捨てる
+    cache.prune(target);
     commit();
     setStageRatio();
     fitCamera();
