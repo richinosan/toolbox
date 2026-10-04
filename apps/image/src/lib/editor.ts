@@ -1894,19 +1894,25 @@ export const mount = (root: HTMLElement) => {
   const applyCrop = () => {
     const result = cropResult();
     if (!doc || !crop || !result) return;
-    const x = Math.round(crop.x);
-    const y = Math.round(crop.y);
-    for (const layer of doc.layers) {
-      layer.x -= x;
-      layer.y -= y;
-    }
-    doc.width = Math.min(result.width, doc.width - x);
-    doc.height = Math.min(result.height, doc.height - y);
     if (result.fit) {
-      const scale = result.fit[0] / doc.width;
-      for (const layer of doc.layers) scaleLayer(layer, scale);
+      // 丸める前の枠で拡大・縮小する。丸めると比率がずれて、端が欠けたり枠の外が見えたりする
+      const scale = result.fit[0] / crop.width;
+      for (const layer of doc.layers) {
+        layer.x -= crop.x;
+        layer.y -= crop.y;
+        scaleLayer(layer, scale);
+      }
       doc.width = result.fit[0];
       doc.height = result.fit[1];
+    } else {
+      const x = Math.round(crop.x);
+      const y = Math.round(crop.y);
+      for (const layer of doc.layers) {
+        layer.x -= x;
+        layer.y -= y;
+      }
+      doc.width = Math.min(result.width, doc.width - x);
+      doc.height = Math.min(result.height, doc.height - y);
     }
     crop = null;
     drag = null;
