@@ -1,5 +1,5 @@
 /** アイコン名。実体は #ui/ToolIcon.astro で解決する。 */
-export type ToolIconName = "calendar" | "em-buttons";
+export type ToolIconName = "calendar" | "em-buttons" | "image";
 
 export type ToolDefinition = {
   id: string;
@@ -25,5 +25,12 @@ export const tools: readonly ToolDefinition[] = [
     description: "コピー＆ペーストで埋め込めるカスタムボタンを作るツール",
     href: "/em-buttons",
     icon: "em-buttons",
+  },
+  {
+    id: "image",
+    name: "IMAGE",
+    description: "画像にレイヤーで文字や図形を重ねて編集するツール",
+    href: "/image",
+    icon: "image",
   },
 ];
