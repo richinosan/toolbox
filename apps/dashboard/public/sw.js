@@ -8,17 +8,20 @@ const PRECACHE = [
   "/",
   "/calendar",
   "/em-buttons",
+  "/image",
   "/manifest.webmanifest",
   "/icons/icon.svg",
   // ツールごとの favicon（各ツールの public/icon.svg）
   "/calendar/icon.svg",
   "/em-buttons/icon.svg",
+  "/image/icon.svg",
 ];
 
 // 事前キャッシュ。ページの HTML だけでなく、そこから辿れる CSS・JS・フォントも一緒に保存する
 // （初回訪問のあとオフラインで開いても、見た目と動作が揃うように）
 const ASSET_PATH = /\/(?:[\w-]+\/)?_astro\/[^"'()\s\\>]+/g;
-const RELATIVE_IMPORT = /(?:from|import)\s*["'](\.{1,2}\/[^"']+)["']/g;
+// 動的 import（import("./x.js")）で読むチャンクも辿る（例: IMAGE の PSD 書き出し）
+const RELATIVE_IMPORT = /(?:from|import)\s*\(?\s*["'`](\.{1,2}\/[^"'`]+)["'`]/g;
 
 const crawl = async (cache, url, seen) => {
   if (seen.has(url)) return;

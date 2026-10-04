@@ -1,0 +1,2097 @@
+---
+import * as shared from "#shared";
+import Layout from "#ui/Layout.astro";
+import ToolIcon from "#ui/ToolIcon.astro";
+import * as exporter from "../lib/exporter";
+import * as model from "../lib/model";
+import * as project from "../lib/project";
+
+const tool = shared.tools.find((t) => t.id === "image")!;
+
+// ツールバーのアイコン（線のアイコン。色は currentColor）
+const icons = {
+  new: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 11v6M9 14h6"/>',
+  open: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/><path d="M3 7v11a2 2 0 0 0 2 2h13l3-9H7l-3 9"/>',
+  save: '<path d="M5 3h11l5 5v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3M7 21v-7h10v7"/>',
+  export:
+    '<path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
+  image:
+    '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 18 5-5 3 3 3-3 5 5"/>',
+  text: '<path d="M5 7V4h14v3M12 4v16M9 20h6"/>',
+  rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
+  ellipse: '<circle cx="12" cy="12" r="8"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
+  snap: '<path d="M6 3v6a6 6 0 0 0 12 0V3"/><path d="M6 7h4M14 7h4"/>',
+} as const;
+---
+
+<Layout
+  title={tool.name}
+  description={tool.description}
+  spec={{
+    overview:
+      "画像の読み込み、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と JavaScript）で行います。テキストの既定のフォントは LINE Seed JP で、Web フォント（Fontsource）・端末のフォント・フォントファイルも使えます。保存するときは、フォントの無い端末でも同じ見た目で表示できるよう、文字の形（パス）も作品ファイルに入れます。",
+    network:
+      "開いた画像や入力した文字がサーバーへ送信されることはありません。Web フォントを選んだときだけ、そのフォントのファイル（使う文字の範囲の分だけ）を jsDelivr（cdn.jsdelivr.net）の Fontsource から読み込み、フォントの名前で探したときだけ、フォントの一覧を Fontsource（api.fontsource.org）から読み込みます。PSD の書き出しと文字のパス化に使うライブラリは、使うときに同じサイトから読み込みます。",
+    storage:
+      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。作品や開いた画像は、ブラウザ（localStorage・IndexedDB・Cookie）には保存しません。保存（Ctrl+S）すると、作品ファイル（.tbimg）として端末に保存します（対応ブラウザでは選んだファイルに上書き、それ以外のブラウザではダウンロード）。",
+    libraries: [
+      "ag-psd（PSD の書き出し）",
+      "fontkit（文字の形をパスにする）",
+      "Fontsource（Web フォント）",
+    ],
+  }}
+  tour={[
+    {
+      target: "#add-tools",
+      title: "レイヤーを追加",
+      body: "画像・テキスト・四角・丸を、レイヤーとして重ねます。画像はキャンバスにドロップしたり、貼り付けたりしても追加できます。",
+    },
+    {
+      target: "#stage",
+      title: "キャンバス",
+      body: "レイヤーはドラッグで動かし、ハンドルで大きさを変えます。キャンバスや他のレイヤーの端・中心にスナップします（Alt キーを押している間は無効）。2 本指またはCtrl+ホイールで拡大・縮小できます。",
+    },
+    {
+      target: "#layers-panel",
+      title: "レイヤー",
+      body: "上にあるものほど手前に表示されます。目のボタンで表示・非表示を切り替え、下のボタンで重なり順の変更・複製・削除ができます。",
+    },
+    {
+      target: "#props-panel",
+      title: "設定",
+      body: "選んだレイヤーの文字・フォント・色・大きさと、カラーフィルターやガウスぼかしを変えます。テキストは文字を選ぶと、その文字だけの書式を変えられます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
+    },
+    {
+      target: "#file-tools",
+      title: "保存と書き出し",
+      body: "保存（Ctrl+S）で作品ファイル（.tbimg）を端末に保存し、あとで開いて続きから編集できます。書き出しでは PNG・JPEG・WebP の画像や、レイヤー付きの PSD を保存します。JPEG・WebP は「1 MB 以下」のようにファイルサイズの上限を指定して圧縮できます。",
+    },
+  ]}
+>
+  <div class="page">
+    <div class="tool-header">
+      <ToolIcon name={tool.icon} />
+      <h1 class="tool-header__name">{tool.name}</h1>
+    </div>
+
+    <div id="image-editor" class="editor" data-state="empty">
+      <div class="toolbar" role="toolbar" aria-label="IMAGE の操作">
+        <div class="toolbar__group" id="file-tools">
+          <button class="tool" type="button" data-action="new" title="新規作成">
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.new} />
+            <span>新規</span>
+          </button>
+          <button
+            class="tool"
+            type="button"
+            data-action="open"
+            title="開く（Ctrl+O）"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.open} />
+            <span>開く</span>
+          </button>
+          <button
+            class="tool ready-only"
+            type="button"
+            data-action="save"
+            title="保存（Ctrl+S）"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.save} />
+            <span>保存</span>
+          </button>
+          <button
+            class="tool ready-only"
+            type="button"
+            data-action="export"
+            title="書き出し（Ctrl+E）"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              set:html={icons.export}
+            />
+            <span>書き出し</span>
+          </button>
+        </div>
+        <div class="toolbar__group" id="add-tools">
+          <button
+            class="tool"
+            type="button"
+            data-action="add-image"
+            title="画像を追加"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              set:html={icons.image}
+            />
+            <span>画像</span>
+          </button>
+          <button
+            class="tool ready-only"
+            type="button"
+            data-action="add-text"
+            title="テキストを追加"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.text} />
+            <span>テキスト</span>
+          </button>
+          <button
+            class="tool ready-only"
+            type="button"
+            data-action="add-rect"
+            title="四角を追加"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.rect} />
+            <span>四角</span>
+          </button>
+          <button
+            class="tool ready-only"
+            type="button"
+            data-action="add-ellipse"
+            title="丸を追加"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              set:html={icons.ellipse}
+            />
+            <span>丸</span>
+          </button>
+        </div>
+        <div class="toolbar__group">
+          <button
+            class="tool"
+            type="button"
+            data-action="undo"
+            title="元に戻す（Ctrl+Z）"
+            disabled
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.undo} />
+            <span>戻す</span>
+          </button>
+          <button
+            class="tool"
+            type="button"
+            data-action="redo"
+            title="やり直す（Ctrl+Shift+Z）"
+            disabled
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.redo} />
+            <span>やり直す</span>
+          </button>
+          <button
+            class="tool tool--toggle ready-only"
+            type="button"
+            data-action="snap"
+            aria-pressed="true"
+            title="スナップ（Alt キーを押している間は無効）"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" set:html={icons.snap} />
+            <span>スナップ</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="workspace">
+        <div class="stage-wrap">
+          <div
+            id="stage"
+            class="stage"
+            role="img"
+            aria-label="キャンバス（ドラッグでレイヤーを移動、ハンドルで大きさを変更）"
+          >
+            <canvas id="view" class="stage__canvas"></canvas>
+            <div
+              id="stage-text"
+              class="rich stage-text"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-label="テキストを編集"
+              spellcheck="false"
+              hidden
+            ></div>
+            <div id="empty" class="empty">
+              <p class="empty__title">画像をドロップするか、選んでください</p>
+              <div class="empty__actions">
+                <button
+                  class="button button--primary"
+                  type="button"
+                  data-action="add-image"
+                >
+                  画像を開く
+                </button>
+                <button class="button" type="button" data-action="new">
+                  白紙から作る
+                </button>
+                <button class="button" type="button" data-action="open">
+                  作品ファイルを開く
+                </button>
+              </div>
+            </div>
+            <div class="zoom ready-only">
+              <button
+                class="zoom__button"
+                type="button"
+                data-action="zoom-out"
+                aria-label="縮小"
+              >
+                −
+              </button>
+              <span id="zoom-label" class="zoom__label" aria-live="polite">
+                100%
+              </span>
+              <button
+                class="zoom__button"
+                type="button"
+                data-action="zoom-in"
+                aria-label="拡大"
+              >
+                +
+              </button>
+              <button
+                class="zoom__button zoom__button--fit"
+                type="button"
+                data-action="zoom-fit"
+                aria-label="全体を表示"
+              >
+                全体
+              </button>
+            </div>
+            <p id="toast" class="toast" role="status"></p>
+          </div>
+        </div>
+
+        <div class="panels">
+          <section
+            id="layers-panel"
+            class="card panel"
+            aria-labelledby="layers-title"
+          >
+            <h2 id="layers-title" class="panel__title">
+              レイヤー
+            </h2>
+            <p id="layer-empty" class="note">
+              画像を開くか、白紙から作るとレイヤーを追加できます。
+            </p>
+            <ul id="layer-list" class="layers"></ul>
+            <div id="layer-actions" class="layer-actions" hidden>
+              <button
+                class="button button--small"
+                type="button"
+                data-action="layer-up"
+              >
+                上へ
+              </button>
+              <button
+                class="button button--small"
+                type="button"
+                data-action="layer-down"
+              >
+                下へ
+              </button>
+              <button
+                class="button button--small"
+                type="button"
+                data-action="layer-duplicate"
+              >
+                複製
+              </button>
+              <button
+                class="button button--small button--danger"
+                type="button"
+                data-action="layer-delete"
+              >
+                削除
+              </button>
+            </div>
+          </section>
+
+          <section
+            id="props-panel"
+            class="card panel"
+            aria-labelledby="props-title"
+          >
+            <h2 id="props-title" class="panel__title">
+              設定
+            </h2>
+
+            <form id="doc-props" class="fields" autocomplete="off" hidden>
+              <label class="field">
+                <span class="field__label">作品名</span>
+                <input
+                  class="input"
+                  type="text"
+                  name="name"
+                  maxlength="200"
+                  autocomplete="off"
+                />
+              </label>
+              <div class="pair">
+                <label class="field">
+                  <span class="field__label">幅（px）</span>
+                  <input
+                    class="input"
+                    type="number"
+                    name="width"
+                    min="1"
+                    max={model.MAX_SIDE}
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </label>
+                <label class="field">
+                  <span class="field__label">高さ（px）</span>
+                  <input
+                    class="input"
+                    type="number"
+                    name="height"
+                    min="1"
+                    max={model.MAX_SIDE}
+                    step="1"
+                    inputmode="numeric"
+                  />
+                </label>
+              </div>
+              <div class="field">
+                <span class="field__label">背景</span>
+                <div class="inline">
+                  <input
+                    class="swatch"
+                    type="color"
+                    name="background"
+                    aria-label="背景色"
+                  />
+                  <label class="check">
+                    <input type="checkbox" name="transparent" />
+                    <span>透明</span>
+                  </label>
+                </div>
+              </div>
+              <p class="note">
+                レイヤーを選ぶと、そのレイヤーの設定に切り替わります。
+              </p>
+            </form>
+
+            <p class="note props-empty">
+              画像を開くか、白紙から作ると設定できます。
+            </p>
+
+            <form id="props" class="fields" autocomplete="off" hidden>
+              <label class="field">
+                <span class="field__label">レイヤー名</span>
+                <input
+                  class="input"
+                  type="text"
+                  data-prop="name"
+                  maxlength="200"
+                  autocomplete="off"
+                />
+              </label>
+
+              <div class="fields" data-for="text">
+                <div class="field">
+                  <span id="rich-label" class="field__label">
+                    テキスト
+                  </span>
+                  <div
+                    id="rich"
+                    class="input rich"
+                    contenteditable="true"
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-labelledby="rich-label"
+                    aria-describedby="rich-hint"
+                    spellcheck="false"
+                  ></div>
+                  <p id="rich-hint" class="note">
+                    文字を選ぶと、その文字だけにフォント・大きさ・色・太字を適用します。選んでいないときはテキスト全体に適用します。キャンバスでダブルクリック（ダブルタップ）すると、その場で編集できます。
+                  </p>
+                </div>
+                <div class="field">
+                  <span class="field__label" id="font-label">
+                    フォント
+                  </span>
+                  <button
+                    id="font-button"
+                    class="input font-button"
+                    type="button"
+                    data-action="pick-font"
+                    aria-labelledby="font-label font-name"
+                    aria-haspopup="dialog"
+                  >
+                    <span id="font-name" class="font-button__name">
+                      LINE Seed JP
+                    </span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m7 10 5 5 5-5"></path>
+                    </svg>
+                  </button>
+                </div>
+                <p id="font-missing" class="note note--warn" hidden></p>
+                <div class="pair">
+                  <label class="field">
+                    <span class="field__label">大きさ（px）</span>
+                    <input
+                      class="input"
+                      type="number"
+                      data-char="size"
+                      min="1"
+                      max="2000"
+                      step="1"
+                      inputmode="decimal"
+                    />
+                  </label>
+                  <div class="field">
+                    <span class="field__label">色・太さ</span>
+                    <div class="inline">
+                      <input
+                        class="swatch"
+                        type="color"
+                        data-char="color"
+                        aria-label="文字の色"
+                      />
+                      <label class="check">
+                        <input type="checkbox" data-char="bold" />
+                        <span>太字</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <fieldset class="seg">
+                  <legend class="field__label">揃え</legend>
+                  <div class="seg__options">
+                    {[
+                      ["left", "左"],
+                      ["center", "中央"],
+                      ["right", "右"],
+                    ].map(([value, label]) => (
+                      <label class="seg__option">
+                        <input
+                          class="seg__input"
+                          type="radio"
+                          name="align"
+                          value={value}
+                          data-prop="align"
+                        />
+                        <span class="seg__label">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <div class="range">
+                  <label class="field__label" for="prop-lineHeight">
+                    行間
+                  </label>
+                  <output for="prop-lineHeight"></output>
+                  <input
+                    id="prop-lineHeight"
+                    class="range__input"
+                    type="range"
+                    data-prop="lineHeight"
+                    data-unit="%"
+                    min="80"
+                    max="250"
+                    step="5"
+                  />
+                </div>
+                <div class="range">
+                  <label class="field__label" for="prop-textStroke">
+                    縁取り
+                  </label>
+                  <output for="prop-textStroke"></output>
+                  <input
+                    id="prop-textStroke"
+                    class="range__input range__input--with-swatch"
+                    type="range"
+                    data-prop="strokeWidth"
+                    data-unit="px"
+                    min="0"
+                    max="40"
+                    step="0.5"
+                  />
+                  <input
+                    class="swatch swatch--small"
+                    type="color"
+                    data-prop="strokeColor"
+                    aria-label="縁取りの色"
+                  />
+                </div>
+                <label class="check">
+                  <input type="checkbox" data-prop="shadow" />
+                  <span>影</span>
+                </label>
+                <div class="convert">
+                  <button
+                    class="button button--small"
+                    type="button"
+                    data-action="to-path"
+                  >
+                    パスに変換
+                  </button>
+                  <p class="note">
+                    文字の形の図形にします。文字は編集できなくなりますが、フォントの無い端末でも同じ形で表示できます。
+                  </p>
+                </div>
+              </div>
+
+              <div class="fields" data-for="path">
+                <div class="inline">
+                  <input
+                    class="swatch"
+                    type="color"
+                    data-path="fill"
+                    aria-label="塗りの色"
+                  />
+                  <span class="note">塗り（すべての文字）</span>
+                </div>
+                <div class="range">
+                  <label class="field__label" for="prop-pathStroke">
+                    縁取り
+                  </label>
+                  <output for="prop-pathStroke"></output>
+                  <input
+                    id="prop-pathStroke"
+                    class="range__input range__input--with-swatch"
+                    type="range"
+                    data-prop="strokeWidth"
+                    data-unit="px"
+                    min="0"
+                    max="40"
+                    step="0.5"
+                  />
+                  <input
+                    class="swatch swatch--small"
+                    type="color"
+                    data-prop="strokeColor"
+                    aria-label="縁取りの色"
+                  />
+                </div>
+                <label class="check">
+                  <input type="checkbox" data-prop="shadow" />
+                  <span>影</span>
+                </label>
+              </div>
+
+              <div class="fields" data-for="rect ellipse">
+                <div class="inline">
+                  <input
+                    class="swatch"
+                    type="color"
+                    data-prop="fill"
+                    aria-label="塗りの色"
+                  />
+                  <label class="check">
+                    <input type="checkbox" data-prop="fillEnabled" />
+                    <span>塗りつぶす</span>
+                  </label>
+                </div>
+                <div class="range">
+                  <label class="field__label" for="prop-shapeStroke">
+                    線
+                  </label>
+                  <output for="prop-shapeStroke"></output>
+                  <input
+                    id="prop-shapeStroke"
+                    class="range__input range__input--with-swatch"
+                    type="range"
+                    data-prop="strokeWidth"
+                    data-unit="px"
+                    min="0"
+                    max="100"
+                    step="1"
+                  />
+                  <input
+                    class="swatch swatch--small"
+                    type="color"
+                    data-prop="stroke"
+                    aria-label="線の色"
+                  />
+                </div>
+                <div class="range" data-for="rect">
+                  <label class="field__label" for="prop-radius">
+                    角の丸さ
+                  </label>
+                  <output for="prop-radius"></output>
+                  <input
+                    id="prop-radius"
+                    class="range__input"
+                    type="range"
+                    data-prop="radius"
+                    data-unit="px"
+                    min="0"
+                    max="500"
+                    step="1"
+                  />
+                </div>
+              </div>
+
+              <details class="group" open>
+                <summary class="group__title">位置と大きさ</summary>
+                <div class="fields">
+                  <div class="pair">
+                    <label class="field">
+                      <span class="field__label">X</span>
+                      <input
+                        class="input"
+                        type="number"
+                        data-prop="x"
+                        step="1"
+                        inputmode="numeric"
+                      />
+                    </label>
+                    <label class="field">
+                      <span class="field__label">Y</span>
+                      <input
+                        class="input"
+                        type="number"
+                        data-prop="y"
+                        step="1"
+                        inputmode="numeric"
+                      />
+                    </label>
+                    <label class="field">
+                      <span class="field__label">幅</span>
+                      <input
+                        class="input"
+                        type="number"
+                        data-prop="width"
+                        min="1"
+                        step="1"
+                        inputmode="numeric"
+                      />
+                    </label>
+                    <label class="field">
+                      <span class="field__label">高さ</span>
+                      <input
+                        class="input"
+                        type="number"
+                        data-prop="height"
+                        min="1"
+                        step="1"
+                        inputmode="numeric"
+                      />
+                    </label>
+                  </div>
+                  <div class="range">
+                    <label class="field__label" for="prop-opacity">
+                      不透明度
+                    </label>
+                    <output for="prop-opacity"></output>
+                    <input
+                      id="prop-opacity"
+                      class="range__input"
+                      type="range"
+                      data-prop="opacity"
+                      data-unit="%"
+                      min="0"
+                      max="100"
+                      step="1"
+                    />
+                  </div>
+                </div>
+              </details>
+
+              <details class="group" open>
+                <summary class="group__title">フィルター</summary>
+                <div class="fields">
+                  <fieldset class="chips">
+                    <legend class="field__label">カラーフィルター</legend>
+                    <div class="chips__options">
+                      {model.filterPresets.map(([value, label]) => (
+                        <label class="chip">
+                          <input
+                            class="chip__input"
+                            type="radio"
+                            name="preset"
+                            value={value}
+                            data-prop="filters.preset"
+                          />
+                          <span class="chip__label">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  {[
+                    ["brightness", "明るさ", -100, 100, ""],
+                    ["contrast", "コントラスト", -100, 100, ""],
+                    ["saturation", "彩度", -100, 100, ""],
+                    ["hue", "色相", -180, 180, "°"],
+                  ].map(([key, label, min, max, unit]) => (
+                    <div class="range">
+                      <label class="field__label" for={`prop-${key}`}>
+                        {label}
+                      </label>
+                      <output for={`prop-${key}`} />
+                      <input
+                        id={`prop-${key}`}
+                        class="range__input"
+                        type="range"
+                        data-prop={`filters.${key}`}
+                        data-unit={unit}
+                        min={min}
+                        max={max}
+                        step="1"
+                      />
+                    </div>
+                  ))}
+                  <div class="range">
+                    <label class="field__label" for="prop-tintAmount">
+                      色かぶせ
+                    </label>
+                    <output for="prop-tintAmount"></output>
+                    <input
+                      id="prop-tintAmount"
+                      class="range__input range__input--with-swatch"
+                      type="range"
+                      data-prop="filters.tintAmount"
+                      data-unit="%"
+                      min="0"
+                      max="100"
+                      step="1"
+                    />
+                    <input
+                      class="swatch swatch--small"
+                      type="color"
+                      data-prop="filters.tint"
+                      aria-label="色かぶせの色"
+                    />
+                  </div>
+                  <div class="range">
+                    <label class="field__label" for="prop-blur">
+                      ガウスぼかし
+                    </label>
+                    <output for="prop-blur"></output>
+                    <input
+                      id="prop-blur"
+                      class="range__input"
+                      type="range"
+                      data-prop="filters.blur"
+                      data-unit="px"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                    />
+                  </div>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    data-action="reset-filters"
+                  >
+                    フィルターをリセット
+                  </button>
+                </div>
+              </details>
+            </form>
+          </section>
+        </div>
+      </div>
+
+      <dialog id="new-dialog" class="dialog" aria-labelledby="new-title">
+        <form id="new-form" class="dialog__form" method="dialog">
+          <h2 id="new-title" class="dialog__title">
+            白紙から作る
+          </h2>
+          <fieldset class="options">
+            <legend class="field__label">大きさ</legend>
+            {[
+              ["1920x1080", "横長（16:9）", "1920 × 1080"],
+              ["1080x1080", "正方形", "1080 × 1080"],
+              ["1080x1350", "縦長（4:5）", "1080 × 1350"],
+              ["1080x1920", "縦長（9:16）", "1080 × 1920"],
+              ["1200x630", "OGP 画像", "1200 × 630"],
+              ["custom", "大きさを指定", ""],
+            ].map(([value, label, size], i) => (
+              <label class="option">
+                <input
+                  type="radio"
+                  name="preset"
+                  value={value}
+                  checked={i === 0}
+                />
+                <span class="option__label">{label}</span>
+                {size && <span class="option__size">{size}</span>}
+              </label>
+            ))}
+          </fieldset>
+          <div id="new-custom" class="pair" hidden>
+            <label class="field">
+              <span class="field__label">幅（px）</span>
+              <input
+                class="input"
+                type="number"
+                name="width"
+                value="1600"
+                min="1"
+                max={model.MAX_SIDE}
+                inputmode="numeric"
+              />
+            </label>
+            <label class="field">
+              <span class="field__label">高さ（px）</span>
+              <input
+                class="input"
+                type="number"
+                name="height"
+                value="900"
+                min="1"
+                max={model.MAX_SIDE}
+                inputmode="numeric"
+              />
+            </label>
+          </div>
+          <fieldset class="seg">
+            <legend class="field__label">背景</legend>
+            <div class="seg__options">
+              {[
+                ["white", "白"],
+                ["black", "黒"],
+                ["transparent", "透明"],
+              ].map(([value, label], i) => (
+                <label class="seg__option">
+                  <input
+                    class="seg__input"
+                    type="radio"
+                    name="background"
+                    value={value}
+                    checked={i === 0}
+                  />
+                  <span class="seg__label">{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div class="dialog__actions">
+            <button class="button" type="submit" value="cancel" formnovalidate>
+              キャンセル
+            </button>
+            <button class="button button--primary" type="submit" value="create">
+              作成
+            </button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="export-dialog" class="dialog" aria-labelledby="export-title">
+        <form id="export-form" class="dialog__form" method="dialog">
+          <h2 id="export-title" class="dialog__title">
+            書き出し
+          </h2>
+          <p id="export-size" class="note"></p>
+          <fieldset class="seg">
+            <legend class="field__label">形式</legend>
+            <div class="seg__options">
+              {exporter.formats.map(([value, label], i) => (
+                <label class="seg__option">
+                  <input
+                    class="seg__input"
+                    type="radio"
+                    name="format"
+                    value={value}
+                    checked={i === 0}
+                  />
+                  <span class="seg__label">{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset id="export-mode" class="seg" hidden>
+            <legend class="field__label">圧縮</legend>
+            <div class="seg__options">
+              {[
+                ["quality", "画質を指定"],
+                ["size", "サイズを指定"],
+              ].map(([value, label], i) => (
+                <label class="seg__option">
+                  <input
+                    class="seg__input"
+                    type="radio"
+                    name="mode"
+                    value={value}
+                    checked={i === 0}
+                  />
+                  <span class="seg__label">{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div id="export-limit" class="fields" hidden>
+            <label class="field">
+              <span class="field__label">ファイルサイズの上限</span>
+              <span class="limit">
+                <input
+                  class="input"
+                  type="number"
+                  name="limit"
+                  value="1"
+                  min="0.01"
+                  max="100"
+                  step="0.01"
+                  inputmode="decimal"
+                />
+                <span>MB</span>
+              </span>
+            </label>
+            <div class="chips__options">
+              {["0.3", "0.5", "1", "2", "5"].map((value) => (
+                <button
+                  class="button button--small"
+                  type="button"
+                  data-limit={value}
+                >
+                  {value} MB
+                </button>
+              ))}
+            </div>
+            <label class="check">
+              <input type="checkbox" name="shrink" checked />
+              <span>画質を下げても収まらないときは、縦横の大きさも縮める</span>
+            </label>
+          </div>
+          <div id="export-quality" class="range" hidden>
+            <label class="field__label" for="export-quality-input">
+              画質
+            </label>
+            <output for="export-quality-input"></output>
+            <input
+              id="export-quality-input"
+              class="range__input"
+              type="range"
+              name="quality"
+              min="50"
+              max="100"
+              step="1"
+              value="92"
+            />
+          </div>
+          <p id="export-note" class="note"></p>
+          <div class="dialog__actions">
+            <button class="button" type="submit" value="cancel">
+              キャンセル
+            </button>
+            <button class="button" type="submit" value="copy">
+              PNG をコピー
+            </button>
+            <button class="button button--primary" type="submit" value="save">
+              書き出す
+            </button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog
+        id="font-dialog"
+        class="dialog dialog--wide"
+        aria-labelledby="font-title"
+      >
+        <form class="dialog__form" method="dialog">
+          <h2 id="font-title" class="dialog__title">
+            フォントを選ぶ
+          </h2>
+          <fieldset class="seg">
+            <legend class="visually-hidden">フォントの場所</legend>
+            <div class="seg__options">
+              {[
+                ["web", "Web フォント"],
+                ["local", "端末のフォント"],
+                ["file", "ファイル"],
+              ].map(([value, label], i) => (
+                <label class="seg__option">
+                  <input
+                    class="seg__input"
+                    type="radio"
+                    name="font-tab"
+                    value={value}
+                    checked={i === 0}
+                  />
+                  <span class="seg__label">{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div class="font-tab" data-tab="web">
+            <div class="font-search">
+              <input
+                id="font-search"
+                class="input"
+                type="search"
+                placeholder="名前で探す（例：Noto、Mincho）"
+                aria-label="フォントの名前で探す"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <label class="check">
+                <input id="font-japanese" type="checkbox" />
+                <span>日本語</span>
+              </label>
+            </div>
+            <p id="font-web-note" class="note" aria-live="polite"></p>
+            <ul id="font-list" class="font-list"></ul>
+          </div>
+
+          <div class="font-tab" data-tab="local" hidden>
+            <p class="note">
+              この端末に入っているフォントを使います。初めて使うときは、ブラウザが許可を確認します（Chrome・Edge
+              のパソコン版で使えます）。
+            </p>
+            <button id="font-local-load" class="button" type="button">
+              端末のフォントを読み込む
+            </button>
+            <input
+              id="font-local-search"
+              class="input"
+              type="search"
+              placeholder="名前で探す"
+              aria-label="端末のフォントの名前で探す"
+              autocomplete="off"
+              spellcheck="false"
+              hidden
+            />
+            <p id="font-local-note" class="note" aria-live="polite"></p>
+            <ul id="font-local-list" class="font-list"></ul>
+          </div>
+
+          <div class="font-tab" data-tab="file" hidden>
+            <p class="note">
+              フォントファイル（.ttf・.otf・.woff・.woff2）を読み込みます。ファイルはサーバーに送らず、この画面を開いている間だけ使います。
+            </p>
+            <button id="font-file-pick" class="button" type="button">
+              フォントファイルを選ぶ
+            </button>
+            <input
+              id="font-file-input"
+              type="file"
+              accept=".ttf,.otf,.woff,.woff2,.ttc,font/ttf,font/otf,font/woff,font/woff2"
+              multiple
+              hidden
+            />
+            <p id="font-file-note" class="note" aria-live="polite"></p>
+            <ul id="font-file-list" class="font-list"></ul>
+          </div>
+
+          <div class="dialog__actions">
+            <button class="button" type="submit">
+              閉じる
+            </button>
+          </div>
+        </form>
+      </dialog>
+
+      <input id="open-input" type="file" accept={project.accept} hidden />
+      <input id="image-input" type="file" accept="image/*" hidden />
+    </div>
+  </div>
+</Layout>
+
+<script>
+  import * as editor from "../lib/editor";
+
+  // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
+  const init = () => {
+    const root = document.querySelector<HTMLElement>("#image-editor");
+    // このツール以外のページでは何もしない
+    if (!root) return;
+    editor.mount(root);
+  };
+  document.addEventListener("astro:page-load", init);
+</script>
+
+<style>
+  .tool-header {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    margin-bottom: var(--space-6);
+  }
+
+  .tool-header__name {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  .page {
+    width: 100%;
+  }
+
+  .editor {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  /* ドキュメントが無いときは、使えない操作を隠す */
+  .editor[data-state="empty"] .ready-only {
+    display: none;
+  }
+
+  /* ---- ツールバー ---- */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .toolbar__group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-surface);
+  }
+
+  .tool {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 1px;
+    min-width: 3.25rem;
+    min-height: 3rem;
+    padding: var(--space-1) 6px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+
+  .tool svg {
+    width: 1.375rem;
+    height: 1.375rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .tool:hover:not(:disabled) {
+    background: var(--color-bg);
+  }
+
+  .tool:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  .tool--toggle[aria-pressed="true"] {
+    background: var(--color-accent-soft);
+    color: var(--color-text);
+  }
+
+  .tool--toggle[aria-pressed="true"] svg {
+    stroke: var(--color-accent);
+  }
+
+  /* 狭い画面では、ツールバーを 1 枚にまとめてボタンを詰めて並べる */
+  @media (max-width: 600px) {
+    .toolbar {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr));
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--color-border);
+      border-radius: 10px;
+      background: var(--color-surface);
+    }
+
+    .toolbar__group {
+      display: contents;
+    }
+
+    .tool {
+      min-width: 0;
+      padding-inline: 0;
+    }
+  }
+
+  /* ---- 作業領域：広い画面はキャンバスを左、パネルを右に置く ---- */
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  @media (min-width: 860px) {
+    .workspace {
+      grid-template-columns: minmax(0, 1fr) 18.5rem;
+    }
+
+    .stage-wrap {
+      position: sticky;
+      top: var(--space-4);
+    }
+  }
+
+  .stage {
+    position: relative;
+    height: clamp(17rem, 62dvh, 46rem);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: light-dark(#e9ecf0, #0b0d10);
+    outline-offset: -2px;
+  }
+
+  /* 狭い画面では、キャンバスの縦横比に合わせて高さを決める（余白を減らす）。下の 52px は拡大・縮小のボタンの分 */
+  .stage-wrap {
+    container-type: inline-size;
+  }
+
+  @media (max-width: 859px) {
+    .stage--ready {
+      height: clamp(
+        15rem,
+        calc((100cqi - 24px) * var(--doc-hw, 0.75) + 64px),
+        65dvh
+      );
+    }
+  }
+
+  /* キャンバス上のドラッグ・ピンチはページのスクロールにしない */
+  .stage--ready {
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .stage--drop {
+    outline: 3px dashed var(--color-accent);
+  }
+
+  .stage__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    text-align: center;
+  }
+
+  .empty[hidden] {
+    display: none;
+  }
+
+  .empty__title {
+    font-weight: 700;
+  }
+
+  .empty__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2);
+  }
+
+  .zoom {
+    position: absolute;
+    right: var(--space-2);
+    bottom: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-surface);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
+  }
+
+  .zoom__button {
+    min-width: 2.25rem;
+    height: 2.25rem;
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+
+  .zoom__button--fit {
+    font-size: 0.75rem;
+  }
+
+  .zoom__button:hover {
+    background: var(--color-bg);
+  }
+
+  .zoom__label {
+    min-width: 3rem;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+
+  .toast {
+    position: absolute;
+    top: var(--space-3);
+    left: 50%;
+    max-width: calc(100% - var(--space-6));
+    padding: var(--space-2) var(--space-3);
+    border-radius: 8px;
+    background: var(--color-text);
+    color: var(--color-surface);
+    font-size: 0.8125rem;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -4px);
+    transition:
+      opacity 0.15s,
+      transform 0.15s;
+  }
+
+  .toast--visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .toast--error {
+    background: light-dark(#c5221f, #f28b82);
+    color: light-dark(#ffffff, #1b1f24);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast {
+      transition: none;
+    }
+  }
+
+  /* ---- パネル ---- */
+  .panels {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .panel {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .panel__title {
+    font-size: 1rem;
+  }
+
+  .editor[data-state="ready"] .props-empty {
+    display: none;
+  }
+
+  .fields {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .fields[hidden],
+  [data-for][hidden],
+  .layer-actions[hidden],
+  .range[hidden],
+  .pair[hidden],
+  .note[hidden] {
+    display: none;
+  }
+
+  .field {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .field__label {
+    padding: 0;
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
+  .input {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.5rem;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: inherit;
+    font: inherit;
+    font-size: 1rem;
+  }
+
+  .input:disabled {
+    opacity: 0.55;
+  }
+
+  .input--text {
+    resize: vertical;
+    line-height: 1.5;
+  }
+
+  .pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .check {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 2.25rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .check input {
+    width: 1.125rem;
+    height: 1.125rem;
+    margin: 0;
+    accent-color: var(--color-accent);
+  }
+
+  .swatch {
+    flex: none;
+    width: 2.75rem;
+    height: 2.25rem;
+    padding: 2px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    cursor: pointer;
+  }
+
+  .swatch:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .swatch--small {
+    width: 2.25rem;
+    height: 2rem;
+  }
+
+  .range {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 2px var(--space-2);
+  }
+
+  .range output {
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .range__input {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin: 0;
+    accent-color: var(--color-accent);
+  }
+
+  .range__input--with-swatch {
+    grid-column: 1;
+  }
+
+  .group {
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-3);
+  }
+
+  .group__title {
+    margin-bottom: var(--space-3);
+    font-weight: 700;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .group:not([open]) .group__title {
+    margin-bottom: 0;
+  }
+
+  .seg {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .seg .field__label {
+    margin-bottom: var(--space-1);
+  }
+
+  .seg__options {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--color-bg);
+  }
+
+  .seg__option {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .seg__input,
+  .chip__input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .seg__label {
+    display: grid;
+    place-items: center;
+    min-height: 2.125rem;
+    padding-inline: var(--space-1);
+    border-radius: 8px;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+
+  .seg__input:checked + .seg__label {
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  }
+
+  .seg__input:focus-visible + .seg__label,
+  .chip__input:focus-visible + .chip__label {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  .chips {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .chips .field__label {
+    margin-bottom: var(--space-1);
+  }
+
+  .chips__options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .chip {
+    position: relative;
+  }
+
+  .chip__label {
+    display: inline-grid;
+    place-items: center;
+    min-height: 2rem;
+    padding: 0 var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg);
+    font-size: 0.8125rem;
+  }
+
+  .chip__input:checked + .chip__label {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    font-weight: 700;
+  }
+
+  .button {
+    min-height: 2.5rem;
+    padding: 0 var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .button:hover:not(:disabled) {
+    border-color: var(--color-accent);
+  }
+
+  .button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .button--primary {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .button--primary {
+      color: #0b1f12;
+    }
+  }
+
+  .button--small {
+    min-height: 2.25rem;
+    padding: 0 var(--space-3);
+    font-size: 0.8125rem;
+  }
+
+  .button--danger:hover:not(:disabled) {
+    border-color: light-dark(#c5221f, #f28b82);
+    color: light-dark(#c5221f, #f28b82);
+  }
+
+  .note {
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  /* ---- レイヤー一覧 ---- */
+  .layers {
+    display: grid;
+    gap: 2px;
+    max-height: 16rem;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .layers:empty {
+    display: none;
+  }
+
+  .layers :global(.layer) {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border-radius: 8px;
+  }
+
+  .layers :global(.layer--selected) {
+    background: var(--color-accent-soft);
+  }
+
+  .layers :global(.layer__eye) {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.75rem;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+
+  .layers :global(.layer__eye svg),
+  .layers :global(.layer__type svg) {
+    width: 1.125rem;
+    height: 1.125rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .layers :global(.layer__pick) {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    min-height: 2.75rem;
+    padding: var(--space-1) var(--space-2) var(--space-1) 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .layers :global(.layer--hidden .layer__pick) {
+    opacity: 0.5;
+  }
+
+  .layers :global(.layer__thumb) {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: conic-gradient(
+        #d9dde2 25%,
+        #ffffff 0 50%,
+        #d9dde2 0 75%,
+        #ffffff 0
+      )
+      0 0 / 10px 10px;
+  }
+
+  .layers :global(.layer__name) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .layers :global(.layer__type) {
+    display: grid;
+    flex: none;
+    color: var(--color-text-muted);
+  }
+
+  .layer-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-1);
+  }
+
+  .layer-actions .button {
+    padding-inline: 0;
+  }
+
+  /* ---- ダイアログ ---- */
+  .dialog {
+    width: min(26rem, calc(100vw - var(--gutter) * 2));
+    max-height: calc(100dvh - var(--space-8));
+    padding: var(--space-6);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    box-shadow: 0 8px 32px rgb(0 0 0 / 0.16);
+  }
+
+  .dialog::backdrop {
+    background: rgb(0 0 0 / 0.3);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .dialog[open] {
+      animation: fade-in 0.18s cubic-bezier(0.2, 0, 0, 1);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .dialog {
+      padding: var(--space-4);
+    }
+  }
+
+  .dialog__form {
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .dialog__title {
+    font-size: 1.125rem;
+  }
+
+  .dialog__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
+  .seg[hidden] {
+    display: none;
+  }
+
+  [data-limit][aria-pressed="true"] {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    font-weight: 700;
+  }
+
+  .limit {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .limit .input {
+    max-width: 8rem;
+  }
+
+  .options {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .option {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--space-2);
+    min-height: 2.5rem;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .option:has(input:checked) {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+  }
+
+  .option input {
+    margin: 0;
+    accent-color: var(--color-accent);
+  }
+
+  .option__label {
+    font-size: 0.875rem;
+  }
+
+  .option__size {
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  /* ---- 文字ごとに書式を持つテキストの編集欄 ---- */
+  .rich {
+    overflow-wrap: normal;
+    white-space: pre;
+    cursor: text;
+  }
+
+  /* 行の高さは、行の中の文字（span）の大きさだけで決める */
+  .rich :global(div) {
+    font-size: 0;
+    line-height: 0;
+  }
+
+  .rich :global(span) {
+    -webkit-text-stroke: var(--stroke, 0);
+    paint-order: stroke fill;
+  }
+
+  .rich--shadow :global(span) {
+    text-shadow: 0.04em 0.06em 0.12em rgb(0 0 0 / 0.55);
+  }
+
+  #rich {
+    min-height: 4.5rem;
+    max-height: 14rem;
+    overflow: auto;
+    padding: var(--space-2);
+    background: #f4f5f7;
+  }
+
+  /* 白っぽい文字は暗い背景で見せる */
+  #rich.rich--dark {
+    background: #2b3036;
+  }
+
+  #rich:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
+  }
+
+  /* 編集欄から離れている間も、書式を変える文字の範囲を見せる */
+  :global(::highlight(tb-text-selection)) {
+    background-color: rgb(26 115 232 / 0.35);
+  }
+
+  .stage-text {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    min-width: 1px;
+    outline: 1px dashed #1a73e8;
+    outline-offset: 2px;
+    caret-color: #1a73e8;
+    -webkit-user-select: text;
+    user-select: text;
+    touch-action: auto;
+  }
+
+  .stage-text[hidden] {
+    display: none;
+  }
+
+  .font-button {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .font-button__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .font-button svg {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .note--warn {
+    padding: var(--space-2) var(--space-3);
+    border-radius: 8px;
+    background: light-dark(#fff4e5, #3a2a12);
+    color: light-dark(#7a4b00, #ffd59a);
+  }
+
+  .convert {
+    display: grid;
+    justify-items: start;
+    gap: var(--space-1);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* ---- フォントを選ぶダイアログ ---- */
+  .dialog--wide {
+    width: min(32rem, calc(100vw - var(--gutter) * 2));
+  }
+
+  .font-tab {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .font-tab[hidden] {
+    display: none;
+  }
+
+  .font-tab .button {
+    justify-self: start;
+  }
+
+  .font-search {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .font-search .input {
+    flex: 1;
+  }
+
+  .font-list {
+    display: grid;
+    gap: 2px;
+    max-height: min(22rem, 45dvh);
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .font-list:empty {
+    display: none;
+  }
+
+  .font-list :global(.font-item) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--space-2);
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .font-list :global(.font-item:hover) {
+    background: var(--color-bg);
+  }
+
+  .font-list :global(.font-item[aria-pressed="true"]) {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+  }
+
+  .font-list :global(.font-item__name) {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .font-list :global(.font-item__meta) {
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+  }
+</style>
