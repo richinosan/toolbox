@@ -20,7 +20,11 @@ const mimeTypes = {
 
 const extensions = { png: ".png", jpeg: ".jpg", webp: ".webp", psd: ".psd" };
 
-const toBlob = (canvas: HTMLCanvasElement, type: string, quality?: number) =>
+export const toBlob = (
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality?: number,
+) =>
   new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (blob) =>
