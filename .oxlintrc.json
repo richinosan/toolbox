@@ -19,6 +19,7 @@
     "**/dist/**",
     "**/.astro/**",
     "**/.wrangler/**",
-    "**/.cloudflare/**"
+    "**/.cloudflare/**",
+    "**/.goesm/**"
   ]
 }

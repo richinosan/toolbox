@@ -3,6 +3,7 @@ dist/
 .astro/
 .wrangler/
 .cloudflare/
+.goesm/
 .dev.vars*
 *.log
 .DS_Store
