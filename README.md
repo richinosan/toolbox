@@ -18,6 +18,7 @@ packages/
 ```
 
 - `package.json` はルートの 1 つだけで、依存はすべてそこで管理します（app / package ごとに `package.json` を持たないルール）。
+- Go で書いた処理（例: `apps/calendar/src/lib/jpdate/`）はルートの `go.mod` 1 つで管理し、[goesm](https://goesm.dev) で TypeScript に変換して `.goesm/` に書き出します（`mise run generate`。build / check / dev / deploy の前に自動で実行）。app からは `#go/*`（例: `import * as jpdate from "#go/apps/calendar/src/lib/jpdate.ts"`）で読み込みます。Go の標準ライブラリは読み込むだけで配信サイズが大きく増えるため、ブラウザで動かすパッケージでは使いません。
 - 共通コードは npm パッケージにせず、ルート `package.json` の `imports`（`#ui/*`, `#shared`）で参照します。
 - フォント（LINE Seed JP）は Astro の Fonts API で配信します。各 app の `astro.config.mjs` で `fonts` に `#ui/fonts.mjs` の設定を渡します（woff2 のみ・必要なサブセットだけ読み込み）。
 - import は default import か namespace import（`import * as x from "..."`）のみ使います。named import は lint でエラーになります。
@@ -30,16 +31,18 @@ packages/
 
 ## コマンド
 
-node / pnpm / ni は [mise](https://mise.jdx.dev/) で管理し、コマンドはすべて mise task に集約しています（`mise tasks` で一覧）。
+node / pnpm / ni / go は [mise](https://mise.jdx.dev/) で管理し、コマンドはすべて mise task に集約しています（`mise tasks` で一覧）。
 
 ```sh
-mise install          # node / pnpm / ni を入れる
+mise install          # node / pnpm / ni / go を入れる
 mise run install      # 依存パッケージをインストール
+mise run generate     # Go のパッケージを goesm で TypeScript に変換（.goesm/）
 mise run build --all  # 全 app をビルド（--dashboard / --calendar のように app を指定することもできる）
-mise run check        # 型チェック（astro check / tsc）
+mise run check        # 型チェック（astro check / tsc）+ go vet
 mise run lint         # oxlint（named import 禁止など独自ルールは lint/plugin.mjs）+ 型チェック
-mise run format       # Prettier で整形
-mise run tests        # lint + 整形チェック
+mise run format       # Prettier と gofmt で整形
+mise run go-test      # Go のテスト（go test）
+mise run tests        # lint + 整形チェック + Go のテスト
 mise run dev <app>    # app を開発サーバーで起動
 mise run deploy <app> # app をビルドしてデプロイ
 ```
