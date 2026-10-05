@@ -1,6 +1,7 @@
 // IMAGE のエディター本体。ページの要素に操作を結び付け、ドキュメントの状態・履歴・描画を管理する。
 import * as motion from "#ui/motion.ts";
 import * as exporter from "./exporter";
+import * as filters from "./filters";
 import * as fontpicker from "./fontpicker";
 import * as fonts from "./fonts";
 import * as model from "./model";
@@ -41,6 +42,13 @@ type Drag =
       startX: number;
       startY: number;
       origin: model.Layer;
+    }
+  | {
+      kind: "crop-move" | "crop-resize";
+      handle: Handle | null;
+      startX: number;
+      startY: number;
+      origin: snap.Box;
     }
   | {
       kind: "pan";
@@ -158,6 +166,109 @@ const highlights = () =>
     ? CSS.highlights
     : null;
 
+/** 切り抜く枠の最小の大きさ（ドキュメントの px） */
+const MIN_CROP = 8;
+
+/** 比率を保ったまま、ドキュメントに収まる一番大きな枠（中央） */
+const fitCrop = (doc: model.Doc, ratio: number): snap.Box => {
+  const width = Math.min(doc.width, doc.height * ratio);
+  const height = width / ratio;
+  return {
+    x: (doc.width - width) / 2,
+    y: (doc.height - height) / 2,
+    width,
+    height,
+  };
+};
+
+/** ハンドルで枠の大きさを変える。ドキュメントの外には出さず、比率があれば保つ */
+const resizeCrop = (
+  doc: model.Doc,
+  origin: snap.Box,
+  handle: Handle,
+  dx: number,
+  dy: number,
+  ratio: number | null,
+): snap.Box => {
+  // ドキュメントが最小の大きさより小さいときは、ドキュメントの大きさまで
+  const minWidth = Math.min(MIN_CROP, doc.width);
+  const minHeight = Math.min(MIN_CROP, doc.height);
+  let left = origin.x;
+  let top = origin.y;
+  let right = origin.x + origin.width;
+  let bottom = origin.y + origin.height;
+  if (handle.includes("w")) left = model.clamp(left + dx, 0, right - minWidth);
+  if (handle.includes("e"))
+    right = model.clamp(right + dx, left + minWidth, doc.width);
+  if (handle.includes("n")) top = model.clamp(top + dy, 0, bottom - minHeight);
+  if (handle.includes("s"))
+    bottom = model.clamp(bottom + dy, top + minHeight, doc.height);
+  if (ratio) {
+    // 小さい方に合わせて縮めるので、ドキュメントからはみ出さない
+    let width = right - left;
+    let height = bottom - top;
+    if (width / height > ratio) width = height * ratio;
+    else height = width / ratio;
+    if (handle.includes("w")) left = right - width;
+    else right = left + width;
+    if (handle.includes("n")) top = bottom - height;
+    else bottom = top + height;
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+};
+
+/** 画像レイヤーのうち、枠（とぼかしで広がる分）にかかる範囲。レイヤーの左上からの px */
+const imageClip = (layer: model.ImageLayer, box: snap.Box): snap.Box => {
+  const margin = 1 + filters.blurPadding(layer.filters.blur);
+  const left = Math.max(0, Math.floor(box.x - layer.x - margin));
+  const top = Math.max(0, Math.floor(box.y - layer.y - margin));
+  const right = Math.min(
+    layer.width,
+    Math.ceil(box.x + box.width - layer.x + margin),
+  );
+  const bottom = Math.min(
+    layer.height,
+    Math.ceil(box.y + box.height - layer.y + margin),
+  );
+  return { x: left, y: top, width: right - left, height: bottom - top };
+};
+
+/** canvas に描ける大きさか（iOS Safari の上限に合わせる） */
+const withinCanvasLimit = (width: number, height: number) =>
+  width <= model.MAX_SIDE &&
+  height <= model.MAX_SIDE &&
+  width * height <= model.MAX_AREA;
+
+/** レイヤーを scale 倍にする（切り抜いたあと、決まった大きさに合わせるとき） */
+const scaleLayer = (layer: model.Layer, scale: number) => {
+  const round = (value: number) => Math.round(value * scale * 10) / 10;
+  if (layer.type === "text") {
+    const outlineValid =
+      layer.outline !== null && layer.outline.key === text.outlineKey(layer);
+    layer.runs = text.scaleRuns(layer.runs, scale);
+    layer.outline =
+      outlineValid && layer.outline
+        ? {
+            key: text.outlineKey(layer),
+            ...text.scaleOutline(layer.outline, scale),
+          }
+        : null;
+  }
+  if ("strokeWidth" in layer) layer.strokeWidth = round(layer.strokeWidth);
+  if (layer.type === "rect") layer.radius = round(layer.radius);
+  layer.filters.blur = round(layer.filters.blur);
+  layer.x = Math.round(layer.x * scale);
+  layer.y = Math.round(layer.y * scale);
+  if (layer.type === "text") {
+    const size = text.measure(layer);
+    layer.width = size.width;
+    layer.height = size.height;
+  } else {
+    layer.width = Math.max(1, Math.round(layer.width * scale));
+    layer.height = Math.max(1, Math.round(layer.height * scale));
+  }
+};
+
 const MEGABYTE = 1_000_000;
 
 /** ファイルサイズを「0.98 MB」「320 KB」のように書く */
@@ -245,6 +356,9 @@ export const mount = (root: HTMLElement) => {
   const fontName = $<HTMLElement>(root, "#font-name");
   const fontMissing = $<HTMLElement>(root, "#font-missing");
   const fontDialog = $<HTMLDialogElement>(root, "#font-dialog");
+  const cropForm = $<HTMLFormElement>(root, "#crop-props");
+  const cropBar = $<HTMLElement>(root, "#crop-bar");
+  const cropButton = $<HTMLButtonElement>(root, '[data-action="crop"]');
   const picker = fontpicker.create(fontDialog, signal);
 
   // ---- 状態 ----
@@ -266,6 +380,8 @@ export const mount = (root: HTMLElement) => {
   /** 書式を適用する文字の範囲（編集欄から離れてボタンなどを押しても覚えておく）。null は全体 */
   let charRange: { start: number; end: number } | null = null;
   let lastTap: { id: string; time: number } | null = null;
+  /** トリミング中の枠（ドキュメントの座標）。トリミングしていないときは null */
+  let crop: snap.Box | null = null;
 
   const selected = () =>
     doc?.layers.find((layer) => layer.id === selectedId) ?? null;
@@ -314,6 +430,7 @@ export const mount = (root: HTMLElement) => {
     if (state === undefined) return;
     closeStageText();
     charRange = null;
+    crop = null;
     historyIndex = index;
     doc = JSON.parse(state) as model.Doc;
     if (!selected()) selectedId = null;
@@ -466,6 +583,11 @@ export const mount = (root: HTMLElement) => {
     }
     context.restore();
 
+    if (crop) {
+      drawCrop(context, crop);
+      return;
+    }
+
     // 選択枠とハンドル
     const layer = selected();
     if (layer) {
@@ -494,6 +616,47 @@ export const mount = (root: HTMLElement) => {
     }
   };
 
+  /** 切り抜く枠の外を暗くし、枠・三分割の線・ハンドルを描く */
+  const drawCrop = (context: CanvasRenderingContext2D, box: snap.Box) => {
+    if (!doc) return;
+    const outer = toScreen(0, 0);
+    const inner = cropScreenBox(box);
+    context.save();
+    context.beginPath();
+    context.rect(
+      outer.x,
+      outer.y,
+      doc.width * camera.scale,
+      doc.height * camera.scale,
+    );
+    context.rect(inner.x, inner.y, inner.width, inner.height);
+    context.fillStyle = "rgb(0 0 0 / 0.55)";
+    context.fill("evenodd");
+    context.strokeStyle = "rgb(255 255 255 / 0.45)";
+    context.lineWidth = 1;
+    context.beginPath();
+    for (const t of [1 / 3, 2 / 3]) {
+      context.moveTo(inner.x + inner.width * t, inner.y);
+      context.lineTo(inner.x + inner.width * t, inner.y + inner.height);
+      context.moveTo(inner.x, inner.y + inner.height * t);
+      context.lineTo(inner.x + inner.width, inner.y + inner.height * t);
+    }
+    context.stroke();
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 1.5;
+    context.strokeRect(inner.x, inner.y, inner.width, inner.height);
+    context.strokeStyle = "#1a73e8";
+    for (const handle of cropHandles()) {
+      const p = handlePoint(inner, handle);
+      context.beginPath();
+      context.arc(p.x, p.y, 6, 0, Math.PI * 2);
+      context.fillStyle = "#ffffff";
+      context.fill();
+      context.stroke();
+    }
+    context.restore();
+  };
+
   // ---- 当たり判定 ----
   const hitLayer = (x: number, y: number) => {
     if (!doc) return null;
@@ -514,20 +677,28 @@ export const mount = (root: HTMLElement) => {
 
   const hitHandle = (clientX: number, clientY: number, touch: boolean) => {
     const layer = selected();
-    if (!layer) return null;
+    if (!layer && !crop) return null;
     const rect = stage.getBoundingClientRect();
     const px = clientX - rect.left;
     const py = clientY - rect.top;
-    const topLeft = toScreen(layer.x, layer.y);
-    const box = {
-      x: topLeft.x,
-      y: topLeft.y,
-      width: layer.width * camera.scale,
-      height: layer.height * camera.scale,
-    };
+    let box: snap.Box;
+    let handles: Handle[];
+    if (crop) {
+      box = cropScreenBox(crop);
+      handles = cropHandles();
+    } else {
+      const topLeft = toScreen(layer!.x, layer!.y);
+      box = {
+        x: topLeft.x,
+        y: topLeft.y,
+        width: layer!.width * camera.scale,
+        height: layer!.height * camera.scale,
+      };
+      handles = handlesFor(layer!);
+    }
     const radius = touch ? 20 : 10;
     let best: { handle: Handle; distance: number } | null = null;
-    for (const handle of handlesFor(layer)) {
+    for (const handle of handles) {
       const p = handlePoint(box, handle);
       const distance = Math.hypot(p.x - px, p.y - py);
       if (distance <= radius && (!best || distance < best.distance))
@@ -703,6 +874,9 @@ export const mount = (root: HTMLElement) => {
     // キャンバス上の編集欄の中では、文字の選択をブラウザに任せる
     if (event.target instanceof Node && stageText.contains(event.target))
       return;
+    // キャンバスの上のボタン（拡大・縮小、トリミング）は、ポインターを奪わずにクリックさせる
+    if (event.target instanceof Element && event.target.closest("button"))
+      return;
     if (event.button !== 0 && event.pointerType === "mouse") return;
     finishEditing();
     stage.setPointerCapture(event.pointerId);
@@ -721,6 +895,23 @@ export const mount = (root: HTMLElement) => {
       event.clientY,
       event.pointerType !== "mouse",
     );
+    if (crop) {
+      const inside =
+        point.x >= crop.x &&
+        point.x <= crop.x + crop.width &&
+        point.y >= crop.y &&
+        point.y <= crop.y + crop.height;
+      if (handle || inside) {
+        drag = {
+          kind: handle ? "crop-resize" : "crop-move",
+          handle,
+          startX: point.x,
+          startY: point.y,
+          origin: { ...crop },
+        };
+        return;
+      }
+    }
     const current = selected();
     if (handle && current) {
       drag = {
@@ -733,7 +924,7 @@ export const mount = (root: HTMLElement) => {
       };
       return;
     }
-    const hit = hitLayer(point.x, point.y);
+    const hit = crop ? null : hitLayer(point.x, point.y);
     if (hit) {
       if (hit.id !== selectedId) select(hit.id);
       drag = {
@@ -764,9 +955,15 @@ export const mount = (root: HTMLElement) => {
       if (event.pointerType === "mouse" && doc) {
         const handle = hitHandle(event.clientX, event.clientY, false);
         const point = toDoc(event.clientX, event.clientY);
+        const inCrop =
+          crop !== null &&
+          point.x >= crop.x &&
+          point.x <= crop.x + crop.width &&
+          point.y >= crop.y &&
+          point.y <= crop.y + crop.height;
         stage.style.cursor = handle
           ? cursors[handle]
-          : hitLayer(point.x, point.y)
+          : inCrop || (!crop && hitLayer(point.x, point.y))
             ? "move"
             : "default";
       }
@@ -803,13 +1000,44 @@ export const mount = (root: HTMLElement) => {
       return;
     }
     const point = toDoc(event.clientX, event.clientY);
+    if (drag.kind === "crop-move" || drag.kind === "crop-resize") {
+      if (!doc || !crop) return;
+      const dx = point.x - drag.startX;
+      const dy = point.y - drag.startY;
+      crop =
+        drag.kind === "crop-move"
+          ? {
+              ...drag.origin,
+              x: model.clamp(
+                drag.origin.x + dx,
+                0,
+                doc.width - drag.origin.width,
+              ),
+              y: model.clamp(
+                drag.origin.y + dy,
+                0,
+                doc.height - drag.origin.height,
+              ),
+            }
+          : resizeCrop(
+              doc,
+              drag.origin,
+              drag.handle!,
+              dx,
+              dy,
+              cropPreset().ratio,
+            );
+      syncCropPanel();
+      requestDraw();
+      return;
+    }
     if (drag.kind === "move") {
       const distance =
         Math.hypot(point.x - drag.startX, point.y - drag.startY) * camera.scale;
       if (!drag.moved && distance < 3) return;
       drag.moved = true;
       applyMove(drag, point, event);
-    } else {
+    } else if (drag.kind === "resize") {
       applyResize(drag, point, event);
     }
     syncGeometry();
@@ -824,7 +1052,7 @@ export const mount = (root: HTMLElement) => {
       if (pointers.size === 0) drag = null;
       return;
     }
-    if (drag.kind === "pan" && !drag.moved) select(null);
+    if (drag.kind === "pan" && !drag.moved && !crop) select(null);
     // タッチでは、同じテキストを 2 回続けてタップしたらその場で編集する
     if (drag.kind === "move" && !drag.moved && event.pointerType !== "mouse") {
       const now = performance.now();
@@ -899,6 +1127,7 @@ export const mount = (root: HTMLElement) => {
 
   // ---- 選択とパネル ----
   const select = (id: string | null) => {
+    if (crop && id !== null) cancelCrop();
     if (editingId && editingId !== id) finishEditing();
     if (id !== selectedId) charRange = null;
     selectedId = id;
@@ -1034,6 +1263,16 @@ export const mount = (root: HTMLElement) => {
 
   /** 選択中のレイヤーの値をパネルに反映する */
   function syncPanel() {
+    cropForm.hidden = crop === null;
+    cropBar.hidden = crop === null;
+    cropButton.setAttribute("aria-pressed", String(crop !== null));
+    if (crop) {
+      props.hidden = true;
+      docForm.hidden = true;
+      propsTitle.textContent = "トリミング";
+      syncCropPanel();
+      return;
+    }
     const layer = selected();
     props.hidden = !layer;
     docForm.hidden = !doc || layer !== null;
@@ -1597,6 +1836,246 @@ export const mount = (root: HTMLElement) => {
       stage.style.setProperty("--doc-hw", String(doc.height / doc.width));
   };
 
+  // ---- トリミング ----
+  const cropPreset = () => {
+    const id = new FormData(cropForm).get("crop-preset");
+    return (
+      model.cropPresets.find((preset) => preset.id === id) ??
+      model.cropPresets[0]!
+    );
+  };
+
+  /** 切り抜く枠を画面の座標にする */
+  function cropScreenBox(box: snap.Box): snap.Box {
+    const topLeft = toScreen(box.x, box.y);
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      width: box.width * camera.scale,
+      height: box.height * camera.scale,
+    };
+  }
+
+  /** 比率が決まっているときは、角のハンドルだけにする */
+  function cropHandles(): Handle[] {
+    return cropPreset().ratio
+      ? ["nw", "ne", "se", "sw"]
+      : ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+  }
+
+  /** 切り抜いたあとの大きさ（px）。決まった大きさに合わせるときはその大きさ */
+  const cropResult = () => {
+    if (!crop) return null;
+    const preset = cropPreset();
+    const fit = preset.size && cropFitInput().checked ? preset.size : null;
+    return {
+      width: Math.max(1, Math.round(crop.width)),
+      height: Math.max(1, Math.round(crop.height)),
+      fit,
+    };
+  };
+
+  const cropFitInput = () =>
+    cropForm.querySelector<HTMLInputElement>('[name="crop-fit"]')!;
+
+  function syncCropPanel() {
+    const result = cropResult();
+    if (!result) return;
+    const preset = cropPreset();
+    const fitLabel = cropForm.querySelector<HTMLElement>("#crop-fit")!;
+    fitLabel.hidden = !preset.size;
+    if (preset.size)
+      cropForm.querySelector<HTMLElement>("#crop-fit-label")!.textContent =
+        `切り抜いたあと ${preset.size[0]} × ${preset.size[1]} px に拡大・縮小する`;
+    cropForm.querySelector<HTMLElement>("#crop-size")!.textContent = result.fit
+      ? `${result.width} × ${result.height} px を切り抜いて、${result.fit[0]} × ${result.fit[1]} px にします`
+      : `${result.width} × ${result.height} px を切り抜きます`;
+  }
+
+  const startCrop = () => {
+    if (!doc) return;
+    if (crop) {
+      cancelCrop();
+      return;
+    }
+    finishEditing();
+    selectedId = null;
+    renderLayerList();
+    const preset = cropPreset();
+    crop = preset.ratio
+      ? fitCrop(doc, preset.ratio)
+      : { x: 0, y: 0, width: doc.width, height: doc.height };
+    syncPanel();
+    requestDraw();
+  };
+
+  function cancelCrop() {
+    if (!crop) return;
+    crop = null;
+    drag = null;
+    syncPanel();
+    requestDraw();
+  }
+
+  /** 画像の clip の範囲だけを、元の解像度で新しい画像にする */
+  const clipAsset = async (layer: model.ImageLayer, clip: snap.Box) => {
+    const asset = assets.get(layer.asset);
+    if (!asset) return null;
+    const sx = asset.image.width / layer.width;
+    const sy = asset.image.height / layer.height;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(clip.width * sx));
+    canvas.height = Math.max(1, Math.round(clip.height * sy));
+    canvas
+      .getContext("2d")!
+      .drawImage(
+        asset.image,
+        clip.x * sx,
+        clip.y * sy,
+        clip.width * sx,
+        clip.height * sy,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+    // 編集中のデータなので、劣化しない PNG にする
+    const blob = await exporter.toBlob(canvas, "image/png");
+    return addAsset(blob, await createImageBitmap(blob));
+  };
+
+  /**
+   * 決まった大きさに合わせて切り抜く。拡大するとレイヤーの枠の外の部分も大きくなるので、
+   * 画像は枠にかかる範囲だけを残す。それでも canvas の上限を超えるときは null
+   */
+  const cropToFit = async (
+    target: model.Doc,
+    box: snap.Box,
+    fit: readonly [number, number],
+  ) => {
+    // 丸める前の枠で拡大・縮小する。丸めると比率がずれて、端が欠けたり枠の外が見えたりする
+    const scale = fit[0] / box.width;
+    const clips = new Map<string, snap.Box>();
+    for (const layer of target.layers)
+      if (layer.type === "image") clips.set(layer.id, imageClip(layer, box));
+    const visible = (size: snap.Box) => size.width > 0 && size.height > 0;
+    // 描くときの canvas は、ぼかしや縁取りの分だけ外に広がる。それも一緒に拡大される
+    const fits = target.layers.every((layer) => {
+      const size = clips.get(layer.id) ?? layer;
+      const pad = render.layerPadding(layer) * 2;
+      return (
+        !visible(size) ||
+        withinCanvasLimit(
+          (size.width + pad) * scale + 2,
+          (size.height + pad) * scale + 2,
+        )
+      );
+    });
+    if (!fits) return null;
+    const replaced = new Map<string, string>();
+    for (const layer of target.layers) {
+      const clip = clips.get(layer.id);
+      if (
+        layer.type !== "image" ||
+        !clip ||
+        !visible(clip) ||
+        (clip.width === layer.width && clip.height === layer.height)
+      )
+        continue;
+      const asset = await clipAsset(layer, clip);
+      if (asset) replaced.set(layer.id, asset);
+    }
+    return () => {
+      // 枠にかからない画像レイヤーは消す
+      target.layers = target.layers.filter((layer) => {
+        const clip = clips.get(layer.id);
+        return !clip || visible(clip);
+      });
+      for (const layer of target.layers) {
+        const clip = clips.get(layer.id);
+        const asset = replaced.get(layer.id);
+        if (layer.type === "image" && clip && asset) {
+          layer.asset = asset;
+          layer.x += clip.x;
+          layer.y += clip.y;
+          layer.width = clip.width;
+          layer.height = clip.height;
+        }
+        layer.x -= box.x;
+        layer.y -= box.y;
+        scaleLayer(layer, scale);
+      }
+      target.width = fit[0];
+      target.height = fit[1];
+    };
+  };
+
+  let applyingCrop = false;
+
+  const applyCrop = async () => {
+    const result = cropResult();
+    if (!doc || !crop || !result || applyingCrop) return;
+    const target = doc;
+    const box = crop;
+    let apply: (() => void) | null = null;
+    if (result.fit) {
+      const before = JSON.stringify(target);
+      const request = JSON.stringify(result);
+      applyingCrop = true;
+      try {
+        apply = await cropToFit(target, box, result.fit);
+      } catch {
+        apply = null;
+      } finally {
+        applyingCrop = false;
+      }
+      // 画像を作っているあいだに編集したり、枠や比率・拡大の設定を変えたり、トリミングをやめたりしたときは何もしない
+      if (
+        doc !== target ||
+        crop !== box ||
+        JSON.stringify(cropResult()) !== request ||
+        JSON.stringify(target) !== before
+      )
+        return;
+    }
+    crop = null;
+    drag = null;
+    if (apply) apply();
+    else {
+      const x = Math.round(box.x);
+      const y = Math.round(box.y);
+      for (const layer of target.layers) {
+        layer.x -= x;
+        layer.y -= y;
+      }
+      target.width = Math.min(result.width, target.width - x);
+      target.height = Math.min(result.height, target.height - y);
+    }
+    // 消した画像レイヤーの描画結果を捨てる
+    cache.prune(target);
+    commit();
+    setStageRatio();
+    fitCamera();
+    refreshAll();
+    notify(
+      result.fit && !apply
+        ? `${result.fit[0]} × ${result.fit[1]} px に拡大できなかったため、${target.width} × ${target.height} px のまま切り抜きました。`
+        : `${target.width} × ${target.height} px に切り抜きました。`,
+    );
+  };
+
+  cropForm.addEventListener("submit", (event) => event.preventDefault());
+  cropForm.addEventListener("change", (event) => {
+    if (!doc || !crop) return;
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.name === "crop-preset") {
+      const preset = cropPreset();
+      if (preset.ratio) crop = fitCrop(doc, preset.ratio);
+    }
+    syncCropPanel();
+    requestDraw();
+  });
+
   const refreshAll = () => {
     empty.hidden = doc !== null;
     stage.classList.toggle("stage--ready", doc !== null);
@@ -1614,6 +2093,7 @@ export const mount = (root: HTMLElement) => {
   const startDoc = (next: model.Doc, handle: project.FileHandle | null) => {
     closeStageText();
     charRange = null;
+    crop = null;
     doc = next;
     fileHandle = handle;
     selectedId = null;
@@ -2053,6 +2533,9 @@ export const mount = (root: HTMLElement) => {
     "layer-duplicate": duplicate,
     "layer-delete": remove,
     "pick-font": () => void pickFont(),
+    crop: startCrop,
+    "crop-apply": () => void applyCrop(),
+    "crop-cancel": cancelCrop,
     "to-path": () => void convertToPath(),
   };
 
@@ -2087,7 +2570,24 @@ export const mount = (root: HTMLElement) => {
         showExport();
         return;
       }
+      // トリミング中は Enter で切り抜き、Esc でやめる（比率の選択肢にフォーカスがあっても効かせる）
+      if (
+        crop &&
+        !mod &&
+        (key === "enter" || key === "escape") &&
+        !(
+          event.target instanceof HTMLInputElement &&
+          !["radio", "checkbox"].includes(event.target.type)
+        )
+      ) {
+        event.preventDefault();
+        if (key === "enter") void applyCrop();
+        else cancelCrop();
+        return;
+      }
       if (isEditable(event.target)) return;
+      // トリミング中は、ほかのキーでレイヤーを動かしたり消したりしない
+      if (crop && !mod) return;
       if (mod && key === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();

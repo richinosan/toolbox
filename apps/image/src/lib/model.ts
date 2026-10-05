@@ -150,6 +150,28 @@ export type Asset = {
 
 export type Assets = Map<string, Asset>;
 
+/** トリミングの比率のプリセット。size があるものは、その大きさ（px）に合わせることもできる */
+export type CropPreset = {
+  id: string;
+  label: string;
+  /** 幅 ÷ 高さ。null は自由 */
+  ratio: number | null;
+  size: readonly [number, number] | null;
+  /** 名前の横に小さく出す説明 */
+  note?: string;
+};
+
+export const cropPresets: readonly CropPreset[] = [
+  { id: "free", label: "自由", ratio: null, size: null },
+  { id: "square", label: "1:1", ratio: 1, size: null, note: "正方形" },
+  { id: "4-5", label: "4:5", ratio: 4 / 5, size: null },
+  { id: "16-9", label: "16:9", ratio: 16 / 9, size: null },
+  { id: "ogp", label: "OGP", ratio: 1200 / 630, size: [1200, 630] },
+  { id: "x", label: "X（Twitter）", ratio: 16 / 9, size: [1600, 900] },
+  { id: "a4-portrait", label: "A4 縦", ratio: 1 / Math.SQRT2, size: null },
+  { id: "a4-landscape", label: "A4 横", ratio: Math.SQRT2, size: null },
+];
+
 export const layerTypeLabels: Record<LayerType, string> = {
   image: "画像",
   rect: "四角",
