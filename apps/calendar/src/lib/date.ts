@@ -1,26 +1,11 @@
 // 日付の解釈と整形は Go（./jpdate）で書き、goesm で TypeScript に変換したものを読み込む。
-// ここでは Go と JavaScript の境目（文字列の変換、NFKC 正規化、今の時刻）だけを扱う。
+// goesm は Go の string を JavaScript の文字列に、struct を json タグの名前のオブジェクトに変換して渡す。
+// ここでは Go にない NFKC 正規化と、今の時刻だけを扱う。
 import * as jpdate from "#go/apps/calendar/src/lib/jpdate.ts";
-
-const rt = jpdate.$runtime;
 
 export const TIME_ZONE_LABEL = "JST (UTC+09:00)";
 
-export type DateInfo = {
-  /** JST での年月日 */
-  year: number;
-  month: number;
-  day: number;
-  /** 「木曜日」の形式の曜日 */
-  weekday: string;
-  unixTime: number;
-  /** 「2026-10-01」の形式（<input type="date"> の value） */
-  isoDate: string;
-  /** 「2026-10-01 00:00:00」の形式（JST） */
-  dateTime: string;
-  /** 「2026年10月01日(木)」の形式 */
-  japanese: string;
-};
+export type DateInfo = ReturnType<typeof jpdate.ParseDate>[0];
 
 /** 今の UNIX 時間（秒） */
 const nowUnix = () => Math.floor(Date.now() / 1000);
@@ -34,23 +19,13 @@ export function parseDate(input: string, now = nowUnix()): DateInfo | null {
   const text = input.normalize("NFKC").trim();
   if (!text) return null;
 
-  const [info, ok] = jpdate.Parse(rt.fromJSString(text), now);
-  if (!ok) return null;
-  return {
-    year: info.Year,
-    month: info.Month,
-    day: info.Day,
-    weekday: rt.toJSString(info.WeekdayName()),
-    unixTime: info.Unix,
-    isoDate: rt.toJSString(info.ISODate()),
-    dateTime: rt.toJSString(info.DateTime()),
-    japanese: rt.toJSString(info.Japanese()),
-  };
+  const [info, ok] = jpdate.ParseDate(text, now);
+  return ok ? info : null;
 }
 
 /** 今日の日付（JST）を「2026-10-01」の形式で返す。 */
 export function today(now = nowUnix()): string {
-  return rt.toJSString(jpdate.Today(now));
+  return jpdate.Today(now);
 }
 
 export type MultiLineResult = {

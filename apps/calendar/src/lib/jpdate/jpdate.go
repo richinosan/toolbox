@@ -1,9 +1,12 @@
 // Package jpdate は calendar に入力された日付を解釈し、JST (UTC+09:00) で表示用に整える。
 //
-// goesm で JavaScript に変換してブラウザで動かす。標準ライブラリは読み込むだけで配信サイズが増える
-// （time だけで gzip 約 +24 KiB）ため使わず、暦の計算も文字列の組み立てもこのパッケージ内で行う。
+// goesm で JavaScript に変換してブラウザで動かす。暦の計算には time を使う。
+// strconv / strings（gzip 約 +15 KB）や regexp（約 +83 KB）は配信サイズが大きく増えるため使わず、
+// 文字列の解析と組み立てはこのパッケージ内で行う（サイズは goesm v0.0.1-beta.3 で計測）。
 // 全角文字の正規化（NFKC）と前後の空白除去は、ブラウザの String.prototype.normalize / trim に任せる。
 package jpdate
+
+import "time"
 
 // Offset は日付のみの入力を解釈するタイムゾーン（固定オフセットの UTC+9）の秒数。
 // Asia/Tokyo は 1888 年以前が地方平均時（UTC+09:18:59）になるため、固定オフセットを使う。
@@ -419,6 +422,41 @@ func (info Info) DateTime() string {
 		pad(info.Hour, 2) + ":" + pad(info.Minute, 2) + ":" + pad(info.Second, 2)
 }
 
+// DateInfo は JavaScript に渡す解釈結果。goesm はフィールドを json タグの名前のプレーンなオブジェクトにする。
+type DateInfo struct {
+	// JST での年月日
+	Year  int `json:"year"`
+	Month int `json:"month"`
+	Day   int `json:"day"`
+	// Weekday は「木曜日」の形式の曜日。
+	Weekday  string `json:"weekday"`
+	UnixTime int    `json:"unixTime"`
+	// ISODate は「2026-10-01」の形式（<input type="date"> の value）。
+	ISODate string `json:"isoDate"`
+	// DateTime は「2026-10-01 00:00:00」の形式（JST）。
+	DateTime string `json:"dateTime"`
+	// Japanese は「2026年10月01日(木)」の形式。
+	Japanese string `json:"japanese"`
+}
+
+// ParseDate は Parse の結果を、表示に使う文字列までそろえて返す（JavaScript から呼ぶ入口）。
+func ParseDate(text string, now int) (DateInfo, bool) {
+	info, ok := Parse(text, now)
+	if !ok {
+		return DateInfo{}, false
+	}
+	return DateInfo{
+		Year:     info.Year,
+		Month:    info.Month,
+		Day:      info.Day,
+		Weekday:  info.WeekdayName(),
+		UnixTime: info.Unix,
+		ISODate:  info.ISODate(),
+		DateTime: info.DateTime(),
+		Japanese: info.Japanese(),
+	}, true
+}
+
 // Today は now（UNIX 時間、秒）の JST での日付を「2026-10-01」の形式で返す。
 func Today(now int) string {
 	return fromUnix(now).ISODate()
@@ -441,43 +479,22 @@ func fromUnix(unix int) Info {
 }
 
 // daysFromCivil は先発グレゴリオ暦の y 年 m 月 d 日の、1970-01-01 からの日数を返す。
-// http://howardhinnant.github.io/date_algorithms.html#days_from_civil
 func daysFromCivil(y, m, d int) int {
-	if m <= 2 {
-		y--
-	}
-	era := floorDiv(y, 400)
-	yoe := y - era*400
-	mp := (m + 9) % 12
-	doy := (153*mp+2)/5 + d - 1
-	doe := yoe*365 + yoe/4 - yoe/100 + doy
-	return era*146097 + doe - 719468
+	return floorDiv(int(time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC).Unix()), 86400)
 }
 
 // civilFromDays は daysFromCivil の逆。
-func civilFromDays(z int) (y, m, d int) {
-	z += 719468
-	era := floorDiv(z, 146097)
-	doe := z - era*146097
-	yoe := (doe - doe/1460 + doe/36524 - doe/146096) / 365
-	doy := doe - (365*yoe + yoe/4 - yoe/100)
-	mp := (5*doy + 2) / 153
-	d = doy - (153*mp+2)/5 + 1
-	m = mp + 3
-	if m > 12 {
-		m -= 12
-	}
-	y = yoe + era*400
-	if m <= 2 {
-		y++
-	}
-	return y, m, d
+func civilFromDays(days int) (y, m, d int) {
+	year, month, day := time.Unix(int64(days)*86400, 0).UTC().Date()
+	return year, int(month), day
 }
 
 // isoWeekday は 1970-01-01 からの日数の曜日を返す（1 が月曜、7 が日曜）。
 func isoWeekday(days int) int {
-	// 1970-01-01 は木曜日
-	return floorMod(days+3, 7) + 1
+	if wd := time.Unix(int64(days)*86400, 0).UTC().Weekday(); wd != time.Sunday {
+		return int(wd)
+	}
+	return 7
 }
 
 // weeksInYear は ISO 8601 の週年 y の週数（52 か 53）を返す。12 月 28 日は必ず最終週に入る。
