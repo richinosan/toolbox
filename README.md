@@ -18,7 +18,7 @@ packages/
 ```
 
 - `package.json` はルートの 1 つだけで、依存はすべてそこで管理します（app / package ごとに `package.json` を持たないルール）。
-- Go で書いた処理（例: `apps/calendar/src/lib/jpdate/`）はルートの `go.mod` 1 つで管理し、[goesm](https://goesm.dev) で TypeScript に変換して `.goesm/` に書き出します（`mise run generate`。build / check / dev / deploy の前に自動で実行）。app からは `#go/*`（例: `import * as jpdate from "#go/apps/calendar/src/lib/jpdate.ts"`）で読み込みます。Go の標準ライブラリは読み込むだけで配信サイズが大きく増えるため、ブラウザで動かすパッケージでは使いません。
+- Go で書いた処理（例: `apps/calendar/src/lib/jpdate/`）はルートの `go.mod` 1 つで管理し、[goesm](https://goesm.dev) で TypeScript に変換して `.goesm/` に書き出します（`mise run generate`。build / check / dev / deploy の前に自動で実行）。app からは `#go/*`（例: `import * as jpdate from "#go/apps/calendar/src/lib/jpdate.ts"`）で読み込みます。Go の標準ライブラリはパッケージによって配信サイズが大きく増える（例: regexp は gzip 約 +83 KB）ため、ブラウザで動かすパッケージで使うときはビルド後のサイズを確かめます。
 - 共通コードは npm パッケージにせず、ルート `package.json` の `imports`（`#ui/*`, `#shared`）で参照します。
 - フォント（LINE Seed JP）は Astro の Fonts API で配信します。各 app の `astro.config.mjs` で `fonts` に `#ui/fonts.mjs` の設定を渡します（woff2 のみ・必要なサブセットだけ読み込み）。
 - import は default import か namespace import（`import * as x from "..."`）のみ使います。named import は lint でエラーになります。

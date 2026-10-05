@@ -6,7 +6,7 @@ tool github.com/goesm-dev/goesm/cmd/goesm
 
 require (
 	github.com/evanw/esbuild v0.28.2 // indirect
-	github.com/goesm-dev/goesm v0.0.1-beta.2 // indirect
+	github.com/goesm-dev/goesm v0.0.1-beta.3 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
