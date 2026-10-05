@@ -47,7 +47,7 @@ const icons = {
     {
       target: "#add-tools",
       title: "レイヤーを追加・トリミング",
-      body: "画像・テキスト・四角・丸を、レイヤーとして重ねます。画像はキャンバスにドロップしたり、貼り付けたりしても追加できます。「トリミング」では、キャンバスを正方形・OGP・X・A4 などの比率に切り抜けます。",
+      body: "画像・テキスト・四角・丸を、レイヤーとして重ねます。画像はキャンバスにドロップしたり、貼り付けたりしても追加できます。「トリミング」では、キャンバスを 1:1・4:5・16:9・OGP・X・A4 などの比率に切り抜けます。",
     },
     {
       target: "#stage",
@@ -418,9 +418,11 @@ const icons = {
                       />
                       <span class="chip__label">
                         {preset.label}
-                        {preset.size && (
+                        {(preset.size || preset.note) && (
                           <span class="chip__sub">
-                            {preset.size[0]} × {preset.size[1]}
+                            {preset.size
+                              ? `${preset.size[0]} × ${preset.size[1]}`
+                              : preset.note}
                           </span>
                         )}
                       </span>
