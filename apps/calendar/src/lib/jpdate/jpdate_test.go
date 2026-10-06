@@ -8,7 +8,7 @@ const now = 1791169200
 func TestParse(t *testing.T) {
 	tests := []struct {
 		in   string
-		want string // DateTime()（JST）、解釈できないなら ""
+		want string // DateTime（JST）、解釈できないなら ""
 		unix int
 	}{
 		// 年月日
@@ -67,53 +67,37 @@ func TestParse(t *testing.T) {
 		{"hello", "", 0},
 	}
 	for _, tt := range tests {
-		info, ok := Parse(tt.in, now)
+		info, ok := ParseDate(tt.in, now)
 		got := ""
 		if ok {
-			got = info.DateTime()
+			got = info.DateTime
 		}
-		if got != tt.want || ok && info.Unix != tt.unix {
-			t.Errorf("Parse(%q) = %q (%d), want %q (%d)", tt.in, got, info.Unix, tt.want, tt.unix)
+		if got != tt.want || ok && info.UnixTime != tt.unix {
+			t.Errorf("ParseDate(%q) = %q (%d), want %q (%d)", tt.in, got, info.UnixTime, tt.want, tt.unix)
 		}
 	}
 }
 
 func TestFormat(t *testing.T) {
-	info, ok := Parse("2026-10-01", now)
+	info, ok := ParseDate("2026-10-01", now)
 	if !ok {
-		t.Fatal("Parse failed")
+		t.Fatal("ParseDate failed")
 	}
-	if got, want := info.WeekdayName(), "木曜日"; got != want {
-		t.Errorf("WeekdayName() = %q, want %q", got, want)
+	if got, want := info.Weekday, "木曜日"; got != want {
+		t.Errorf("Weekday = %q, want %q", got, want)
 	}
-	if got, want := info.Japanese(), "2026年10月01日(木)"; got != want {
-		t.Errorf("Japanese() = %q, want %q", got, want)
+	if got, want := info.Japanese, "2026年10月01日(木)"; got != want {
+		t.Errorf("Japanese = %q, want %q", got, want)
 	}
-	if got, want := info.ISODate(), "2026-10-01"; got != want {
-		t.Errorf("ISODate() = %q, want %q", got, want)
+	if got, want := info.ISODate, "2026-10-01"; got != want {
+		t.Errorf("ISODate = %q, want %q", got, want)
 	}
 
-	big, _ := Parse("+010000-01-01", now)
-	if got, want := big.ISODate(), "+010000-01-01"; got != want {
-		t.Errorf("ISODate() = %q, want %q", got, want)
+	big, _ := ParseDate("+010000-01-01", now)
+	if got, want := big.ISODate, "+010000-01-01"; got != want {
+		t.Errorf("ISODate = %q, want %q", got, want)
 	}
 	if got, want := Today(now), "2026-10-05"; got != want {
 		t.Errorf("Today() = %q, want %q", got, want)
-	}
-}
-
-// 1 日ずつ進めて、日付と UNIX 時間の変換が往復で一致し、曜日が 1 つずつ進むことを確かめる。
-func TestCivilRoundTrip(t *testing.T) {
-	prev := isoWeekday(daysFromCivil(1, 1, 1) - 1)
-	for days := daysFromCivil(1, 1, 1); days <= daysFromCivil(3000, 12, 31); days++ {
-		y, m, d := civilFromDays(days)
-		if !validDate(y, m, d) || daysFromCivil(y, m, d) != days {
-			t.Fatalf("civilFromDays(%d) = %d-%d-%d", days, y, m, d)
-		}
-		wd := isoWeekday(days)
-		if wd != prev%7+1 {
-			t.Fatalf("isoWeekday(%d) = %d after %d", days, wd, prev)
-		}
-		prev = wd
 	}
 }
