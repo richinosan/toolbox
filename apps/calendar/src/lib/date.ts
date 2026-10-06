@@ -11,7 +11,7 @@ export type DateInfo = ReturnType<typeof jpdate.ParseDate>[0];
 const nowUnix = () => Math.floor(Date.now() / 1000);
 
 /**
- * 日付文字列を解釈する（対応形式は jpdate.go の Parse を参照）。
+ * 日付文字列を解釈する（対応形式は jpdate.go の ParseDate を参照）。
  * 全角数字・全角記号は半角として扱う。西暦 1 年より前と、解釈できない入力は null。
  */
 export function parseDate(input: string, now = nowUnix()): DateInfo | null {
