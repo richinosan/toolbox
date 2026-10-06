@@ -16,7 +16,7 @@ import (
 var jst = time.FixedZone("UTC+9", 9*60*60)
 
 // JavaScript の Date が扱える範囲（±8.64e15 ミリ秒）。これを超える日時は解釈できないものとする。
-const maxSeconds = 8_640_000_000_000
+const maxMillis = 8_640_000_000_000_000
 
 var (
 	// 2026年10月1日, 10月1日, 1日
@@ -74,8 +74,9 @@ func ParseDate(text string, now int) (info DateInfo, ok bool) {
 	if !ok {
 		return DateInfo{}, false
 	}
-	t = t.In(jst)
-	if t.Year() < 1 {
+	// 表示する JST の時刻も範囲内にあること（luxon と同じ）
+	t, ok = inRange(t.In(jst))
+	if !ok || t.Year() < 1 {
 		return DateInfo{}, false
 	}
 	weekday := weekdayNames[t.Weekday()]
@@ -206,7 +207,7 @@ func withTime(day time.Time, clock []string) (time.Time, bool) {
 	if hour > 23 && !endOfDay || minute > 59 || second > 59 {
 		return time.Time{}, false
 	}
-	return inRange(day.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute + time.Duration(second)*time.Second))
+	return inRange(day.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute + time.Duration(second)*time.Second + time.Duration(millis)*time.Millisecond))
 }
 
 // zone はオフセットの部分一致（Z、±hh、mm）からタイムゾーンを返す。オフセットがなければ JST。
@@ -228,8 +229,8 @@ func zone(offset []string) *time.Location {
 // inRange は t が JavaScript の Date で扱える範囲（壁時計の時刻も含む）にあるかを確かめる。
 func inRange(t time.Time) (time.Time, bool) {
 	_, offset := t.Zone()
-	unix := t.Unix()
-	if abs(unix) > maxSeconds || abs(unix+int64(offset)) > maxSeconds {
+	millis := t.UnixMilli()
+	if abs(millis) > maxMillis || abs(millis+int64(offset)*1000) > maxMillis {
 		return time.Time{}, false
 	}
 	return t, true
