@@ -11,11 +11,11 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   description={tool.description}
   spec={{
     overview:
-      "入力された日付の解釈と曜日・Unix time の計算、複数行の整形は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
+      "入力された日付の解釈と曜日・Unix time の計算、複数行の整形は、すべてブラウザ内で行います（Go で書いた処理を goesm で JavaScript に変換して動かしています）。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
     network: "なし（入力した日付がサーバーへ送信されることはありません）",
     storage:
       "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。localStorage には、選んだ入力モード（「1件」か「複数行」）だけを保存します。入力した日付は保存しません。Cookie は使いません。",
-    libraries: ["luxon（日付の解釈と計算）"],
+    libraries: ["goesm（Go で書いた日付の解釈と計算を JavaScript に変換）"],
   }}
   tour={[
     {
@@ -242,7 +242,6 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
 </Layout>
 
 <script>
-  import * as luxon from "luxon";
   import * as motion from "#ui/motion.ts";
   import * as date from "../lib/date";
 
@@ -283,7 +282,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
               : part.value,
       )
       .join("");
-    const formatDate = (value: luxon.DateTime) => {
+    const formatDate = (value: date.DateInfo) => {
       const utc = new Date(0);
       // Date.UTC は 0〜99 年を 1900 年代にずらすので setUTCFullYear で組み立てる
       utc.setUTCFullYear(value.year, value.month - 1, value.day);
@@ -311,14 +310,12 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       weekday.textContent = nextWeekday;
       unixTime.textContent = nextUnixTime;
       copyButton.disabled = !info;
-      picker.value = info?.dateTime.toISODate() ?? "";
-      pickerLabel.textContent = info
-        ? formatDate(info.dateTime)
-        : datePlaceholder;
+      picker.value = info?.isoDate ?? "";
+      pickerLabel.textContent = info ? formatDate(info) : datePlaceholder;
       pickerLabel.classList.toggle("picker__label--empty", !info);
       note.classList.toggle("note--error", !info && text.value.trim() !== "");
       if (info) {
-        note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${date.TIME_ZONE_LABEL}）として計算しています。`;
+        note.textContent = `${info.dateTime}（${date.TIME_ZONE_LABEL}）として計算しています。`;
       } else {
         note.textContent = text.value.trim()
           ? "日付として解釈できません。"
@@ -448,9 +445,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     });
     renderMulti();
 
-    if (!text.value)
-      text.value =
-        luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate() ?? "";
+    if (!text.value) text.value = date.today();
     render();
     initialised = true;
   };

@@ -1,4 +1,5 @@
 [tools]
+go = "1.27.1"
 ni = "30.6.0"
 node = "26.10.0"
 "npm:cf" = "1.0.0-beta.7"
@@ -6,6 +7,8 @@ pnpm = "12.8.1"
 
 # コマンドはすべて mise task に集約する（`mise tasks` で一覧）。
 # 依存はルートの package.json だけで管理し、CLI（astro, tsc など）はルートの node_modules/.bin から使う。cf CLI は mise の npm:cf で入れる。
+# Go で書いた処理（apps/*/src/lib/<pkg>/*.go）はルートの go.mod で管理し、goesm で TypeScript に変換して .goesm/ に書き出す。
+# app からは package.json の imports（#go/*）で読み込む（例: import * as x from "#go/apps/calendar/src/lib/jpdate.ts"）。
 # Cloudflare 操作は cf CLI を使う（wrangler は使わない）。Worker の設定は各 app の cloudflare.config.ts に書く。
 # astro build の最後に #ui/cloudflare.mjs が cf 用の Build Output（.cloudflare/output/）を書き出す。
 
@@ -16,8 +19,13 @@ _.path = ["{{config_root}}/node_modules/.bin"]
 description = "依存パッケージをインストール（lockfile どおり）"
 run = "ni --frozen"
 
+[tasks.generate]
+description = "Go のパッケージを goesm で TypeScript に変換して .goesm/ に書き出す"
+run = "go tool goesm emit-ts -o .goesm ./apps/..."
+
 [tasks.build]
 description = "app をビルド（例: mise run build --all / --dashboard / --calendar）"
+depends = ["generate"]
 # --<app> は apps/ 配下のディレクトリ名から決まるので、ツールを足しても mise.toml は変えなくてよい
 usage = 'arg "[target]..." help="--all または --<app>（複数指定可。例: --dashboard --calendar）" var=#true'
 run = '''
@@ -61,8 +69,10 @@ done
 '''
 
 [tasks.check]
-description = "型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
+description = "型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）と go vet"
+depends = ["generate"]
 run = '''
+go vet ./apps/...
 for dir in apps/*/ packages/*/; do
   [ -f "$dir/tsconfig.json" ] || continue
   if find "$dir" -name "*.astro" -not -path "*/node_modules/*" -print -quit | grep -q .; then
@@ -79,24 +89,33 @@ depends = ["check"]
 run = "oxlint"
 
 [tasks.format]
-description = "Prettier で整形"
-run = "prettier --write ."
+description = "Prettier と gofmt で整形"
+run = ["prettier --write .", "gofmt -w apps"]
 
 [tasks."format-check"]
-description = "Prettier の整形チェック"
-run = "prettier --check ."
+description = "Prettier と gofmt の整形チェック"
+run = [
+  "prettier --check .",
+  'test -z "$(gofmt -l apps)" || { echo "gofmt で整形されていないファイルがあります:"; gofmt -l apps; exit 1; }',
+]
+
+[tasks."go-test"]
+description = "Go のテスト（go test）"
+run = "go test ./apps/..."
 
 [tasks.tests]
-description = "lint・型チェック・整形チェックをまとめて実行"
+description = "lint・型チェック・整形チェック・Go のテストをまとめて実行"
 alias = "test"
-depends = ["lint", "format-check"]
+depends = ["lint", "format-check", "go-test"]
 
 [tasks.dev]
 description = "app を開発サーバーで起動（例: mise run dev calendar）"
+depends = ["generate"]
 usage = 'arg "<app>" help="apps/ 配下の app 名"'
 run = 'cd "apps/$usage_app" && cf dev'
 
 [tasks.deploy]
 description = "app をビルドして Cloudflare にデプロイ（例: mise run deploy calendar）"
+depends = ["generate"]
 usage = 'arg "<app>" help="apps/ 配下の app 名"'
 run = 'cd "apps/$usage_app" && cf deploy'
