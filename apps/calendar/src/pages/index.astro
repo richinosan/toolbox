@@ -45,13 +45,13 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       target: "#multi-input",
       reveal: "#mode-multi",
       title: "複数行で入力",
-      body: "1 行に 1 つずつ日付を書きます。形式は行ごとに違っていても構いません。",
+      body: "1 行に 1 つずつ日付を書きます。形式は行ごとに違っていても構いません。「2027年10月17日(日) 開催」のように文章が続く行や、予定表をそのまま貼り付けても、日付の部分だけを読み取ります。",
     },
     {
       target: "#multi-output",
       reveal: "#mode-multi",
       title: "まとめて出力",
-      body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。祝日・休日は「(火・祝)」のように表示します。右上のボタンで全部コピーできます。",
+      body: "日付の部分を「2026年10月01日(木)」の形式に整え、それ以外の文字はそのまま、入力と同じ行に出力します。祝日・休日は「(火・祝)」のように表示します。右上のボタンで全部コピーできます。",
     },
   ]}
 >
@@ -186,7 +186,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       <div id="multi-panel" class="panel" hidden>
         <div class="field">
           <label class="field__label" for="multi-input">
-            日付（1 行に 1 つ）
+            日付（1 行ごとに読み取り）
           </label>
           <textarea
             id="multi-input"
@@ -194,7 +194,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
             rows="6"
             spellcheck="false"
             autocomplete="off"
-            placeholder={"2026-10-01\n10/2\n2026年10月3日"}
+            placeholder={"2026-10-01\n10/2\n2026年10月3日(土) 締め切り"}
           ></textarea>
         </div>
         <div class="field">
@@ -438,14 +438,19 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     const renderMulti = () => {
       const result = date.formatLines(multiInput.value);
       multiOutput.value = result.output;
-      copyMulti.disabled =
-        result.parsedCount === 0 && result.invalidLines.length === 0;
-      const invalid = result.invalidLines.length > 0;
-      multiNote.classList.toggle("note--error", invalid);
-      if (invalid) {
-        multiNote.textContent = `${result.invalidLines.join("、")} 行目を日付として解釈できません。`;
-      } else if (result.parsedCount > 0) {
-        multiNote.textContent = `${result.parsedCount} 件を変換しました。`;
+      copyMulti.disabled = !multiInput.value.trim();
+      const passed =
+        result.passedLines.length > 0
+          ? `${result.passedLines.join("、")} 行目は日付が見つからないので、そのまま出力しています。`
+          : "";
+      multiNote.classList.toggle(
+        "note--error",
+        result.parsedCount === 0 && passed !== "",
+      );
+      if (result.parsedCount > 0) {
+        multiNote.textContent = `${result.parsedCount} 件を変換しました。${passed}`;
+      } else if (passed) {
+        multiNote.textContent = passed;
       } else {
         multiNote.textContent = `1 行に 1 つずつ日付を入力してください。日付のみの入力は ${date.TIME_ZONE_LABEL} として扱います。`;
       }
