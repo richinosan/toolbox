@@ -107,30 +107,67 @@ export function formatJapanese(info: DateInfo): string {
 }
 
 export type MultiLineResult = {
-  /** 入力と同じ行数の出力。空行はそのまま、解釈できない行は理由つきで残す。 */
+  /** 入力と同じ行数の出力。日付の部分だけを整形し、それ以外の文字はそのまま残す。 */
   output: string;
-  /** 解釈できなかった行番号（1 始まり） */
-  invalidLines: number[];
-  /** 解釈できた行の数 */
+  /** 日付が見つからず、そのまま出力した行の番号（1 始まり。空行は含まない） */
+  passedLines: number[];
+  /** 整形した日付の数 */
   parsedCount: number;
 };
 
-/** 1 行に 1 つ書かれた日付をまとめて整形する。 */
+// 文中から日付を探すときの形式。全角の数字・記号も受け付ける（解釈は parseDate に任せる）。
+// 「1日」や 8 桁の数字だけのような、文中では日付と決めにくい形式は行全体のときだけ扱う。
+const D = "[0-9０-９]";
+const DATE_IN_TEXT = new RegExp(
+  "(?<![0-9０-９/／.．:：])(" +
+    [
+      // 2026年10月1日, 10月1日
+      `(?:${D}{4}年)?${D}{1,2}月${D}{1,2}日`,
+      // 2026-10-01T12:00:00+09:00 などの ISO 8601（時刻つき）
+      `${D}{4}[\\-－]${D}{2}[\\-－]${D}{2}[TＴ]${D}{2}[:：]${D}{2}(?:[:：]${D}{2}(?:[.．]${D}+)?)?(?:[ZＺ]|[+＋\\-－]${D}{2}[:：]?${D}{2})?`,
+      // 2026/10/1, 26/10/1, 2026-10-01
+      `(?:${D}{2}|${D}{4})([/／]|[\\-－])${D}{1,2}\\2${D}{1,2}`,
+      // 10/1
+      `${D}{1,2}[/／]${D}{1,2}`,
+    ].join("|") +
+    ")" +
+    // 日付の後ろに書かれた曜日「(土)」「（日）」「(火・祝)」は付け直すので取り除く
+    `(?:[ 　]*[(（][ 　]*[日月火水木金土](?:曜日?)?(?:[・･][ 　]*祝(?:日)?)?[ 　]*[)）])?` +
+    "(?![0-9０-９/／:：]|[.．][0-9０-９])",
+  "g",
+);
+
+/**
+ * 行ごとに日付を整形する。行全体が日付ならその行を、文の中に日付があればその部分だけを
+ * 「2026年10月01日(木)」の形式に置き換え、残りの文字はそのまま出力する。
+ * 日付が見つからない行は何も変えずに出力する。
+ */
 export function formatLines(
   input: string,
   now = luxon.DateTime.now(),
 ): MultiLineResult {
-  const invalidLines: number[] = [];
+  const passedLines: number[] = [];
   let parsedCount = 0;
   const lines = input.split(/\r\n|\r|\n/).map((line, i) => {
-    if (!line.trim()) return "";
-    const info = parseDate(line, now);
-    if (!info) {
-      invalidLines.push(i + 1);
-      return `解釈できません: ${line.trim()}`;
+    if (!line.trim()) return line;
+    const whole = parseDate(line, now);
+    if (whole) {
+      parsedCount += 1;
+      return formatJapanese(whole);
     }
-    parsedCount += 1;
-    return formatJapanese(info);
+    let found = false;
+    const replaced = line.replace(
+      DATE_IN_TEXT,
+      (match: string, text: string) => {
+        const info = parseDate(text, now);
+        if (!info) return match;
+        found = true;
+        parsedCount += 1;
+        return formatJapanese(info);
+      },
+    );
+    if (!found) passedLines.push(i + 1);
+    return replaced;
   });
-  return { output: lines.join("\n"), invalidLines, parsedCount };
+  return { output: lines.join("\n"), passedLines, parsedCount };
 }
