@@ -11,7 +11,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   description={tool.description}
   spec={{
     overview:
-      "入力された日付の解釈と曜日・Unix time の計算、複数行の整形は、すべてブラウザ内（JavaScript）で行います。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
+      "入力された日付の解釈と曜日・祝日・Unix time の計算、複数行の整形は、すべてブラウザ内（JavaScript）で行います。祝日は外部のデータを使わず「国民の祝日に関する法律」に沿って計算します（振替休日・国民の休日を含む。春分の日・秋分の日は近似式による計算のため、先の年は推計です。2151 年以降は計算できないので「不明」と表示します）。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
     network: "なし（入力した日付がサーバーへ送信されることはありません）",
     storage:
       "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。localStorage には、選んだ入力モード（「1件」か「複数行」）だけを保存します。入力した日付は保存しません。Cookie は使いません。",
@@ -39,7 +39,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       target: ".result",
       reveal: "#mode-single",
       title: "結果",
-      body: "入力した日付の曜日と Unix time（秒）が表示されます。",
+      body: "入力した日付の曜日、祝日・休日の名前、Unix time（秒）が表示されます。",
     },
     {
       target: "#multi-input",
@@ -51,7 +51,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       target: "#multi-output",
       reveal: "#mode-multi",
       title: "まとめて出力",
-      body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。右上のボタンで全部コピーできます。",
+      body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。祝日・休日は「(火・祝)」のように表示します。右上のボタンで全部コピーできます。",
     },
   ]}
 >
@@ -140,6 +140,10 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
             <dd id="weekday">—</dd>
           </div>
           <div class="result__row">
+            <dt>祝日・休日</dt>
+            <dd id="holiday">—</dd>
+          </div>
+          <div class="result__row">
             <dt>Unix time（秒）</dt>
             <dd class="result__value">
               <span id="unix-time" class="result__mono">
@@ -196,7 +200,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
         <div class="field">
           <div class="multi__head">
             <label class="field__label" for="multi-output">
-              出力（yyyy年mm月dd日(曜)）
+              出力（yyyy年mm月dd日(曜)、祝日は(曜・祝)）
             </label>
             <span class="copy">
               <button
@@ -245,6 +249,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   import * as luxon from "luxon";
   import * as motion from "#ui/motion.ts";
   import * as date from "../lib/date";
+  import * as holiday from "../lib/holiday";
 
   // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
   const init = () => {
@@ -259,6 +264,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       document.querySelector<HTMLElement>("#date-picker-label")!;
     const note = document.querySelector<HTMLElement>("#date-note")!;
     const weekday = document.querySelector<HTMLElement>("#weekday")!;
+    const holidayValue = document.querySelector<HTMLElement>("#holiday")!;
     const unixTime = document.querySelector<HTMLElement>("#unix-time")!;
     const copyButton =
       document.querySelector<HTMLButtonElement>("#copy-unix-time")!;
@@ -302,13 +308,22 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     const render = () => {
       const info = date.parseDate(text.value);
       const nextWeekday = info?.weekday ?? "—";
+      const nextHoliday = !info
+        ? "—"
+        : info.holiday === undefined
+          ? `不明（${holiday.LAST_YEAR} 年まで対応）`
+          : (info.holiday ?? "なし");
       const nextUnixTime = info ? String(info.unixTime) : "—";
       // 結果が変わったときだけ軽く動かす（初期表示では動かさない）
       if (initialised && weekday.textContent !== nextWeekday)
         motion.play(weekday, "pop");
+      if (initialised && holidayValue.textContent !== nextHoliday)
+        motion.play(holidayValue, "pop");
       if (initialised && unixTime.textContent !== nextUnixTime)
         motion.play(unixTime, "pop");
       weekday.textContent = nextWeekday;
+      holidayValue.textContent = nextHoliday;
+      holidayValue.classList.toggle("result__holiday--none", !info?.holiday);
       unixTime.textContent = nextUnixTime;
       copyButton.disabled = !info;
       picker.value = info?.dateTime.toISODate() ?? "";
@@ -703,8 +718,15 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
 
   /* 結果が変わったときに軽く動かすので、インラインブロックにする */
   #weekday,
+  #holiday,
   #unix-time {
     display: inline-block;
+  }
+
+  /* 祝日でない日は「なし」を控えめに出す */
+  .result__row dd.result__holiday--none {
+    color: var(--color-text-muted);
+    font-weight: 400;
   }
 
   .copy__tooltip--visible {
