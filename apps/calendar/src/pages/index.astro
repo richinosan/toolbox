@@ -2,6 +2,7 @@
 import * as shared from "#shared";
 import Layout from "#ui/Layout.astro";
 import ToolIcon from "#ui/ToolIcon.astro";
+import MonthCalendar from "../MonthCalendar.astro";
 
 const tool = shared.tools.find((t) => t.id === "calendar")!;
 ---
@@ -52,6 +53,11 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       reveal: "#mode-multi",
       title: "まとめて出力",
       body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。祝日・休日は「(火・祝)」のように表示します。右上のボタンで全部コピーできます。",
+    },
+    {
+      target: "#month",
+      title: "月のカレンダー",
+      body: "入力した日付の月を表示します。祝日・休日は赤字と印で示し、下に一覧を出します。日付を押すと入力欄に入ります（複数行モードでは 1 行追加します）。",
     },
   ]}
 >
@@ -242,6 +248,8 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
         <p id="multi-note" class="note" aria-live="polite"></p>
       </div>
     </section>
+
+    <MonthCalendar />
   </div>
 </Layout>
 
@@ -269,6 +277,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     const copyButton =
       document.querySelector<HTMLButtonElement>("#copy-unix-time")!;
     const copyTooltip = document.querySelector<HTMLElement>("#copy-tooltip")!;
+    const month = document.querySelector<HTMLElement>("#month")!;
 
     // 日付の表記はブラウザではなくサービスの言語設定（<html lang>）に合わせる。ja なら yyyy/mm/dd
     const dateFormat = new Intl.DateTimeFormat(document.documentElement.lang, {
@@ -327,6 +336,11 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       unixTime.textContent = nextUnixTime;
       copyButton.disabled = !info;
       picker.value = info?.dateTime.toISODate() ?? "";
+      // 月のカレンダーにも選択中の日付を伝える（初期化前でも読めるよう data 属性にも残す）
+      month.dataset.selected = picker.value;
+      month.dispatchEvent(
+        new CustomEvent("calendar:select", { detail: picker.value }),
+      );
       pickerLabel.textContent = info
         ? formatDate(info.dateTime)
         : datePlaceholder;
@@ -463,6 +477,19 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     });
     renderMulti();
 
+    // 月のカレンダーで日付を押したら、1件モードでは入力欄を置き換え、複数行モードでは 1 行追加する
+    month.addEventListener("calendar:pick", (event) => {
+      const value = (event as CustomEvent<string>).detail;
+      if (panels.multi.hidden) {
+        text.value = value;
+        render();
+        return;
+      }
+      const current = multiInput.value.replace(/\n+$/, "");
+      multiInput.value = current ? `${current}\n${value}` : value;
+      renderMulti();
+    });
+
     if (!text.value)
       text.value =
         luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate() ?? "";
@@ -490,6 +517,29 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     width: 100%;
     max-width: 520px;
     margin-inline: auto;
+  }
+
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+  }
+
+  .page > .tool-header {
+    margin-bottom: 0;
+  }
+
+  /* 広い画面では右側に月のカレンダーを並べる。狭い画面では入力の下に回す */
+  @media (min-width: 880px) {
+    .page {
+      max-width: 900px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+    }
+
+    .tool-header {
+      grid-column: 1 / -1;
+    }
   }
 
   .mode {
