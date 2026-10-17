@@ -22,12 +22,19 @@ const SPECIAL_HOLIDAYS: Record<string, string> = {
 
 const cache = new Map<number, Map<string, string>>();
 
-/** 指定した日の祝日・休日名を返す。祝日でなければ null。 */
+/** 祝日を計算できる最後の年（春分・秋分の近似式が使える範囲）。 */
+export const LAST_YEAR = 2150;
+
+/**
+ * 指定した日の祝日・休日名を返す。祝日でなければ null。
+ * LAST_YEAR より後は春分の日・秋分の日（とそれに伴う休日）が求められないので undefined（不明）を返す。
+ */
 export function holidayName(
   year: number,
   month: number,
   day: number,
-): string | null {
+): string | null | undefined {
+  if (year > LAST_YEAR) return undefined;
   return holidaysOf(year).get(toKey(year, month, day)) ?? null;
 }
 

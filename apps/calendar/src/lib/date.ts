@@ -11,8 +11,8 @@ export const TIME_ZONE_LABEL = "JST (UTC+09:00)";
 export type DateInfo = {
   dateTime: luxon.DateTime;
   weekday: string;
-  /** 祝日・休日の名前（JST での日付で判定）。祝日でなければ null */
-  holiday: string | null;
+  /** 祝日・休日の名前（JST での日付で判定）。祝日でなければ null、計算できない年は undefined */
+  holiday: string | null | undefined;
   unixTime: number;
 };
 
