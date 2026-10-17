@@ -98,11 +98,12 @@ function toFullYear(year: string): number {
 
 /**
  * 「2026年10月01日(木)」の形式（年は 4 桁、月日は 2 桁、曜日は 1 文字）に整える。
- * 祝日・休日なら「2026年11月03日(火) 文化の日」のように名前を後ろに付ける。
+ * 祝日・休日（振替休日・国民の休日を含む）は「2026年11月03日(火・祝)」のように曜日の後ろに「祝」を付ける。
  */
 export function formatJapanese(info: DateInfo): string {
-  const text = info.dateTime.setLocale("ja").toFormat("yyyy年MM月dd日(EEE)");
-  return info.holiday ? `${text} ${info.holiday}` : text;
+  const day = info.dateTime.setLocale("ja").toFormat("yyyy年MM月dd日");
+  const weekday = info.dateTime.setLocale("ja").toFormat("EEE");
+  return `${day}(${info.holiday ? `${weekday}・祝` : weekday})`;
 }
 
 export type MultiLineResult = {

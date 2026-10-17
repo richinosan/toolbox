@@ -51,7 +51,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       target: "#multi-output",
       reveal: "#mode-multi",
       title: "まとめて出力",
-      body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。祝日・休日は後ろに名前が付きます。右上のボタンで全部コピーできます。",
+      body: "「2026年10月01日(木)」の形式で、入力と同じ行に出力します。祝日・休日は「(火・祝)」のように表示します。右上のボタンで全部コピーできます。",
     },
   ]}
 >
@@ -200,7 +200,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
         <div class="field">
           <div class="multi__head">
             <label class="field__label" for="multi-output">
-              出力（yyyy年mm月dd日(曜) 祝日名）
+              出力（yyyy年mm月dd日(曜)、祝日は(曜・祝)）
             </label>
             <span class="copy">
               <button
