@@ -1,4 +1,5 @@
 import * as luxon from "luxon";
+import * as holiday from "./holiday";
 
 /**
  * 日付のみの入力は常にこのタイムゾーンの 00:00:00 として解釈する。
@@ -10,6 +11,8 @@ export const TIME_ZONE_LABEL = "JST (UTC+09:00)";
 export type DateInfo = {
   dateTime: luxon.DateTime;
   weekday: string;
+  /** 祝日・休日の名前（JST での日付で判定）。祝日でなければ null */
+  holiday: string | null;
   unixTime: number;
 };
 
@@ -36,6 +39,7 @@ export function parseDate(
   return {
     dateTime,
     weekday,
+    holiday: holiday.holidayName(dateTime.year, dateTime.month, dateTime.day),
     unixTime: dateTime.toUnixInteger(),
   };
 }
@@ -92,9 +96,13 @@ function toFullYear(year: string): number {
   return value < 60 ? 2000 + value : 1900 + value;
 }
 
-/** 「2026年10月01日(木)」の形式（年は 4 桁、月日は 2 桁、曜日は 1 文字）に整える。 */
+/**
+ * 「2026年10月01日(木)」の形式（年は 4 桁、月日は 2 桁、曜日は 1 文字）に整える。
+ * 祝日・休日なら「2026年11月03日(火) 文化の日」のように名前を後ろに付ける。
+ */
 export function formatJapanese(info: DateInfo): string {
-  return info.dateTime.setLocale("ja").toFormat("yyyy年MM月dd日(EEE)");
+  const text = info.dateTime.setLocale("ja").toFormat("yyyy年MM月dd日(EEE)");
+  return info.holiday ? `${text} ${info.holiday}` : text;
 }
 
 export type MultiLineResult = {
