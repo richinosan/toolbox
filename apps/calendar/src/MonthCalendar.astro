@@ -2,12 +2,36 @@
 // 月のカレンダー表示。選択中の日付は親ページが data-selected と calendar:select イベントで渡し、
 // 日付を押すと calendar:pick イベント（detail に yyyy-mm-dd）を親ページに返す。
 const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+const months = Array.from({ length: 12 }, (_, index) => index + 1);
 ---
 
 <section id="month" class="card month" aria-labelledby="month-title">
   <div class="month__head">
-    <h2 id="month-title" class="month__title" aria-live="polite">
-      &nbsp;
+    <!-- 遠い月へ何度も「次の月」を押さずに済むよう、見出しを押すと年と月を選ぶ画面に切り替える -->
+    <h2 class="month__title">
+      <button
+        id="month-title-button"
+        class="month__title-button"
+        type="button"
+        aria-expanded="false"
+        aria-controls="month-picker"
+      >
+        <span id="month-title" aria-live="polite">
+          &nbsp;
+        </span>
+        <svg
+          class="month__title-icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m6 9 6 6 6-6"></path>
+        </svg>
+      </button>
     </h2>
     <div class="month__nav">
       <button
@@ -56,26 +80,36 @@ const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
     </div>
   </div>
 
-  <table class="month__grid">
-    <thead>
-      <tr>
-        {weekdays.map((name, index) => (
-          <th
-            scope="col"
-            class:list={[
-              "month__weekday",
-              index === 0 && "month__weekday--sun",
-              index === 6 && "month__weekday--sat",
-            ]}
-          >
-            {name}
-          </th>
-        ))}
-      </tr>
-    </thead>
-    <!-- 月によって行数が変わると高さが揺れるので、常に 6 週分を描く -->
-    <tbody id="month-body"></tbody>
-  </table>
+  <div class="month__body">
+    <table id="month-days" class="month__grid">
+      <thead>
+        <tr>
+          {weekdays.map((name, index) => (
+            <th
+              scope="col"
+              class:list={[
+                "month__weekday",
+                index === 0 && "month__weekday--sun",
+                index === 6 && "month__weekday--sat",
+              ]}
+            >
+              {name}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <!-- 月によって行数が変わると高さが揺れるので、常に 6 週分を描く -->
+      <tbody id="month-body"></tbody>
+    </table>
+
+    <div id="month-picker" class="month__picker" hidden>
+      {months.map((value) => (
+        <button class="month__month" type="button" data-month={value}>
+          {value}月
+        </button>
+      ))}
+    </div>
+  </div>
 
   <ul id="month-holidays" class="month__holidays"></ul>
 </section>
@@ -107,6 +141,14 @@ const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
     const prev = root.querySelector<HTMLButtonElement>("#month-prev")!;
     const next = root.querySelector<HTMLButtonElement>("#month-next")!;
     const todayButton = root.querySelector<HTMLButtonElement>("#month-today")!;
+    const titleButton = root.querySelector<HTMLButtonElement>(
+      "#month-title-button",
+    )!;
+    const days = root.querySelector<HTMLElement>("#month-days")!;
+    const picker = root.querySelector<HTMLElement>("#month-picker")!;
+    const monthButtons = [
+      ...picker.querySelectorAll<HTMLButtonElement>(".month__month"),
+    ];
 
     const now = luxon.DateTime.now().setZone(date.TIME_ZONE);
     const today = toKey(now.year, now.month, now.day);
@@ -122,6 +164,36 @@ const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
       }
     };
     showSelectedMonth();
+    // 年と月を選ぶ画面を開いているときは、前後のボタンで 1 年ずつ動かす
+    let picking = false;
+    let pickerYear = year;
+
+    const renderPicker = (animate = false) => {
+      title.textContent = `${pickerYear}年`;
+      for (const button of monthButtons) {
+        const value = Number(button.dataset.month);
+        button.setAttribute(
+          "aria-pressed",
+          String(pickerYear === year && value === month),
+        );
+        if (pickerYear === now.year && value === now.month)
+          button.setAttribute("aria-current", "date");
+        else button.removeAttribute("aria-current");
+      }
+      prev.disabled = pickerYear <= 1;
+      next.disabled = pickerYear >= 9999;
+      if (animate) motion.play(picker, "pop");
+    };
+
+    const setPicking = (value: boolean) => {
+      picking = value;
+      pickerYear = year;
+      picker.hidden = !value;
+      days.classList.toggle("month__grid--hidden", value);
+      titleButton.setAttribute("aria-expanded", String(value));
+      prev.setAttribute("aria-label", value ? "前の年" : "前の月");
+      next.setAttribute("aria-label", value ? "次の年" : "次の月");
+    };
 
     const render = (animate = false) => {
       title.textContent = `${year}年${month}月`;
@@ -196,6 +268,11 @@ const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
     };
 
     const move = (delta: number) => {
+      if (picking) {
+        pickerYear = Math.min(9999, Math.max(1, pickerYear + delta));
+        renderPicker(true);
+        return;
+      }
       const index = year * 12 + (month - 1) + delta;
       year = Math.floor(index / 12);
       month = (index % 12) + 1;
@@ -204,10 +281,34 @@ const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
     prev.addEventListener("click", () => move(-1));
     next.addEventListener("click", () => move(1));
     todayButton.addEventListener("click", () => {
-      const changed = year !== now.year || month !== now.month;
+      const changed = picking || year !== now.year || month !== now.month;
       year = now.year;
       month = now.month;
+      setPicking(false);
       render(changed);
+    });
+    titleButton.addEventListener("click", () => {
+      setPicking(!picking);
+      if (picking) renderPicker(true);
+      else render(true);
+    });
+    picker.addEventListener("click", (event) => {
+      const button = (event.target as Element).closest<HTMLButtonElement>(
+        ".month__month",
+      );
+      if (!button) return;
+      year = pickerYear;
+      month = Number(button.dataset.month);
+      setPicking(false);
+      render(true);
+      titleButton.focus();
+    });
+    // Esc で月の表示に戻る
+    root.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !picking) return;
+      setPicking(false);
+      render(true);
+      titleButton.focus();
     });
     body.addEventListener("click", (event) => {
       const button = (event.target as Element).closest<HTMLButtonElement>(
@@ -225,6 +326,7 @@ const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
       const before = `${year}-${month}`;
       selected = value;
       showSelectedMonth();
+      if (picking) setPicking(false);
       render(before !== `${year}-${month}`);
     });
 
@@ -250,7 +352,97 @@ const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
 
   .month__title {
     font-size: 1.125rem;
+  }
+
+  .month__title-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 2.25rem;
+    margin-left: calc(var(--space-2) * -1);
+    padding: 0 var(--space-2);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
     font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+
+  .month__title-button:hover {
+    background: var(--color-bg);
+  }
+
+  .month__title-button[aria-expanded="true"] {
+    border-color: var(--color-border);
+  }
+
+  .month__title-icon {
+    width: 1rem;
+    height: 1rem;
+    color: var(--color-text-muted);
+    transition: rotate 0.15s;
+  }
+
+  .month__title-button[aria-expanded="true"] .month__title-icon {
+    rotate: 180deg;
+  }
+
+  /* 日付の表と月の選択を同じ場所に重ね、切り替えても高さが変わらないようにする */
+  .month__body {
+    display: grid;
+  }
+
+  .month__body > * {
+    grid-area: 1 / 1;
+  }
+
+  .month__grid--hidden {
+    visibility: hidden;
+  }
+
+  .month__picker {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .month__picker[hidden] {
+    display: none;
+  }
+
+  .month__month {
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+
+  .month__month:hover:not([aria-pressed="true"]) {
+    background: var(--color-bg);
+  }
+
+  .month__month[aria-current="date"] {
+    border-color: var(--color-accent);
+    font-weight: 700;
+  }
+
+  .month__month[aria-pressed="true"] {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    font-weight: 700;
   }
 
   .month__nav {
@@ -399,6 +591,12 @@ const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .month__title-button,
+    .month__title-icon,
+    .month__month {
+      transition: none;
+    }
+
     .month :global(.month__day) {
       transition: none;
     }
