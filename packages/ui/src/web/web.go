@@ -41,16 +41,18 @@ func Play(element js.Value, kind string) { play(element, kind) }
 func Await(promise js.Value) (js.Value, error) {
 	done := make(chan js.Value, 1)
 	failed := make(chan js.Value, 1)
-	promise.Call("then",
-		js.FuncOf(func(this js.Value, args []js.Value) any {
-			done <- arg(args)
-			return nil
-		}),
-		js.FuncOf(func(this js.Value, args []js.Value) any {
-			failed <- arg(args)
-			return nil
-		}),
-	)
+	resolve := js.FuncOf(func(this js.Value, args []js.Value) any {
+		done <- arg(args)
+		return nil
+	})
+	reject := js.FuncOf(func(this js.Value, args []js.Value) any {
+		failed <- arg(args)
+		return nil
+	})
+	// どちらかが呼ばれたら、もう呼ばれないので両方を手放す
+	defer resolve.Release()
+	defer reject.Release()
+	promise.Call("then", resolve, reject)
 	select {
 	case v := <-done:
 		return v, nil
