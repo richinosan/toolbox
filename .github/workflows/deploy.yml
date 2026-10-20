@@ -44,7 +44,7 @@ jobs:
           fi
           echo "name=$app" >> "$GITHUB_OUTPUT"
 
-      # mise.toml に固定した node / pnpm / ni / cf を入れる
+      # mise.toml に固定した node / pnpm / ni / cf / go を入れる
       - uses: jdx/mise-action@v5
 
       - run: mise run install
