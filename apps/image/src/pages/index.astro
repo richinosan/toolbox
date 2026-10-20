@@ -2,9 +2,17 @@
 import * as shared from "#shared";
 import Layout from "#ui/Layout.astro";
 import ToolIcon from "#ui/ToolIcon.astro";
-import * as exporter from "../lib/exporter";
-import * as model from "../lib/model";
-import * as project from "../lib/project";
+import * as model from "go:toolbox.richinosan.com/apps/image/src/lib/model";
+
+// 選択肢などは Go のモデル（src/lib/model）と同じ値を使う
+// Go のスライスは null になりうる型なので、空の配列にしておく
+const data = model.Page();
+const page = {
+  ...data,
+  CropPresets: data.CropPresets ?? [],
+  FilterPresets: data.FilterPresets ?? [],
+  ExportFormats: data.ExportFormats ?? [],
+};
 
 const tool = shared.tools.find((t) => t.id === "image")!;
 
@@ -32,12 +40,14 @@ const icons = {
   description={tool.description}
   spec={{
     overview:
-      "画像の読み込み、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と JavaScript）で行います。テキストの既定のフォントは LINE Seed JP で、Web フォント（Fontsource）・端末のフォント・フォントファイルも使えます。保存するときは、フォントの無い端末でも同じ見た目で表示できるよう、文字の形（パス）も作品ファイルに入れます。",
+      "画像の読み込み、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と、Go で書いて JavaScript に変換した処理）で行います。テキストの既定のフォントは LINE Seed JP で、Web フォント（Fontsource）・端末のフォント・フォントファイルも使えます。保存するときは、フォントの無い端末でも同じ見た目で表示できるよう、文字の形（パス）も作品ファイルに入れます。",
     network:
       "開いた画像や入力した文字がサーバーへ送信されることはありません。Web フォントを選んだときだけ、そのフォントのファイル（使う文字の範囲の分だけ）を jsDelivr（cdn.jsdelivr.net）の Fontsource から読み込み、フォントの名前で探したときだけ、フォントの一覧を Fontsource（api.fontsource.org）から読み込みます。PSD の書き出しと文字のパス化に使うライブラリは、使うときに同じサイトから読み込みます。",
     storage:
       "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。作品や開いた画像は、ブラウザ（localStorage・IndexedDB・Cookie）には保存しません。保存（Ctrl+S）すると、作品ファイル（.tbimg）として端末に保存します（対応ブラウザでは選んだファイルに上書き、それ以外のブラウザではダウンロード）。",
     libraries: [
+      "goesm（Go で書いた処理を JavaScript に変換）",
+      "gosfc（Go の処理をページに読み込む）",
       "ag-psd（PSD の書き出し）",
       "fontkit（文字の形をパスにする）",
       "Fontsource（Web フォント）",
@@ -365,7 +375,7 @@ const icons = {
                     type="number"
                     name="width"
                     min="1"
-                    max={model.MAX_SIDE}
+                    max={page.MaxSide}
                     step="1"
                     inputmode="numeric"
                   />
@@ -377,7 +387,7 @@ const icons = {
                     type="number"
                     name="height"
                     min="1"
-                    max={model.MAX_SIDE}
+                    max={page.MaxSide}
                     step="1"
                     inputmode="numeric"
                   />
@@ -407,7 +417,7 @@ const icons = {
               <fieldset class="chips">
                 <legend class="field__label">比率</legend>
                 <div class="chips__options">
-                  {model.cropPresets.map((preset, i) => (
+                  {page.CropPresets.map((preset, i) => (
                     <label class="chip">
                       <input
                         class="chip__input"
@@ -779,7 +789,7 @@ const icons = {
                   <fieldset class="chips">
                     <legend class="field__label">カラーフィルター</legend>
                     <div class="chips__options">
-                      {model.filterPresets.map(([value, label]) => (
+                      {page.FilterPresets.map(({ value, label }) => (
                         <label class="chip">
                           <input
                             class="chip__input"
@@ -904,7 +914,7 @@ const icons = {
                 name="width"
                 value="1600"
                 min="1"
-                max={model.MAX_SIDE}
+                max={page.MaxSide}
                 inputmode="numeric"
               />
             </label>
@@ -916,7 +926,7 @@ const icons = {
                 name="height"
                 value="900"
                 min="1"
-                max={model.MAX_SIDE}
+                max={page.MaxSide}
                 inputmode="numeric"
               />
             </label>
@@ -962,7 +972,7 @@ const icons = {
           <fieldset class="seg">
             <legend class="field__label">形式</legend>
             <div class="seg__options">
-              {exporter.formats.map(([value, label], i) => (
+              {page.ExportFormats.map(({ value, label }, i) => (
                 <label class="seg__option">
                   <input
                     class="seg__input"
@@ -1159,23 +1169,17 @@ const icons = {
         </form>
       </dialog>
 
-      <input id="open-input" type="file" accept={project.accept} hidden />
+      <input id="open-input" type="file" accept={page.Accept} hidden />
       <input id="image-input" type="file" accept="image/*" hidden />
     </div>
   </div>
 </Layout>
 
 <script>
-  import * as editor from "../lib/editor";
+  import * as page from "go:toolbox.richinosan.com/apps/image/src/page";
 
-  // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
-  const init = () => {
-    const root = document.querySelector<HTMLElement>("#image-editor");
-    // このツール以外のページでは何もしない
-    if (!root) return;
-    editor.mount(root);
-  };
-  document.addEventListener("astro:page-load", init);
+  // エディターは Go（src/page）で書いている。ページを表示するたびに初期化する
+  page.Start();
 </script>
 
 <style>
