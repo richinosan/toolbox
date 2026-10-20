@@ -1,4 +1,5 @@
 [tools]
+go = "1.27.1"
 ni = "30.6.0"
 node = "26.10.0"
 "npm:cf" = "1.0.0-beta.7"
@@ -6,6 +7,9 @@ pnpm = "12.8.1"
 
 # コマンドはすべて mise task に集約する（`mise tasks` で一覧）。
 # 依存はルートの package.json だけで管理し、CLI（astro, tsc など）はルートの node_modules/.bin から使う。cf CLI は mise の npm:cf で入れる。
+# ページの処理は Go で書く（apps/<app>/src/page、共通の DOM 処理は packages/ui/src/web）。Go はルートの go.mod で管理し、
+# goesm と gosfc は go.mod の tool で固定する。ビルドでは gosfc（#ui/go.mjs の Vite プラグイン）が go: の import を
+# goesm で TypeScript に変換する。型チェック用に同じ TypeScript を .goesm/ にも書き出す（mise run generate）。
 # Cloudflare 操作は cf CLI を使う（wrangler は使わない）。Worker の設定は各 app の cloudflare.config.ts に書く。
 # astro build の最後に #ui/cloudflare.mjs が cf 用の Build Output（.cloudflare/output/）を書き出す。
 
@@ -15,6 +19,10 @@ _.path = ["{{config_root}}/node_modules/.bin"]
 [tasks.install]
 description = "依存パッケージをインストール（lockfile どおり）"
 run = "ni --frozen"
+
+[tasks.generate]
+description = "Go のパッケージを goesm で TypeScript に変換して .goesm/ に書き出す（astro check が go: の import の型に使う）"
+run = "go tool goesm emit-ts -o .goesm ./apps/... ./packages/..."
 
 [tasks.build]
 description = "app をビルド（例: mise run build --all / --dashboard / --calendar）"
@@ -61,8 +69,12 @@ done
 '''
 
 [tasks.check]
-description = "型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
+description = "型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）と go vet"
+depends = ["generate"]
 run = '''
+# ブラウザ向け（syscall/js を使う）のファイルは GOOS=js で、それ以外は go test と同じ環境で確かめる
+go vet ./apps/... ./packages/...
+GOOS=js GOARCH=wasm go vet ./apps/... ./packages/...
 for dir in apps/*/ packages/*/; do
   [ -f "$dir/tsconfig.json" ] || continue
   if find "$dir" -name "*.astro" -not -path "*/node_modules/*" -print -quit | grep -q .; then
@@ -79,17 +91,24 @@ depends = ["check"]
 run = "oxlint"
 
 [tasks.format]
-description = "Prettier で整形"
-run = "prettier --write ."
+description = "Prettier と gofmt で整形"
+run = ["prettier --write .", "gofmt -w apps packages"]
 
 [tasks."format-check"]
-description = "Prettier の整形チェック"
-run = "prettier --check ."
+description = "Prettier と gofmt の整形チェック"
+run = [
+  "prettier --check .",
+  'test -z "$(gofmt -l apps packages)" || { echo "gofmt で整形されていないファイルがあります:"; gofmt -l apps packages; exit 1; }',
+]
+
+[tasks."go-test"]
+description = "Go のテスト（go test）"
+run = "go test ./apps/... ./packages/..."
 
 [tasks.tests]
-description = "lint・型チェック・整形チェックをまとめて実行"
+description = "lint・型チェック・整形チェック・Go のテストをまとめて実行"
 alias = "test"
-depends = ["lint", "format-check"]
+depends = ["lint", "format-check", "go-test"]
 
 [tasks.dev]
 description = "app を開発サーバーで起動（例: mise run dev calendar）"

@@ -1,5 +1,13 @@
 {
   "extends": "astro/tsconfigs/strictest",
+  "compilerOptions": {
+    // gosfc の go: の import は、mise run generate で .goesm/ に書き出した TypeScript で型を確かめる
+    "paths": {
+      "go:toolbox.richinosan.com/*": [
+        "../../.goesm/toolbox.richinosan.com/*.ts"
+      ]
+    }
+  },
   "include": [".astro/types.d.ts", "**/*"],
   "exclude": ["dist"]
 }
