@@ -111,7 +111,7 @@ type editor struct {
 	// crop はトリミング中の枠（ドキュメントの座標）。トリミングしていないときは nil。
 	crop *snap.Box
 
-	toastTimer, commitTimer, fontTimer js.Value
+	toastTimer, commitTimer, fontTimer *timer
 	frame                              int
 	checker                            js.Value
 	stageTextScale                     float64
@@ -144,9 +144,6 @@ func mount(root js.Value) {
 		snapEnabled: true,
 		camera:      camera{scale: 1, fit: true},
 		pointers:    map[int]point{},
-		toastTimer:  js.Null(),
-		commitTimer: js.Null(),
-		fontTimer:   js.Null(),
 		checker:     js.Null(),
 	}
 	e.cache = render.NewCache(e.assets)
@@ -223,21 +220,34 @@ func (e *editor) onDoc(target js.Value, typ string, handler func(event js.Value)
 	on(target, typ, handler, options)
 }
 
-// after は ms ミリ秒後に f を呼ぶ。戻り値は clearTimeout に渡す。
-func after(ms float64, f func()) js.Value {
-	var callback js.Func
-	callback = js.FuncOf(func(js.Value, []js.Value) any {
-		callback.Release()
+// timer は setTimeout の予約。
+type timer struct {
+	id       js.Value
+	callback js.Func
+	done     bool
+}
+
+// after は ms ミリ秒後に f を呼ぶ。clearTimer で取り消せる。
+func after(ms float64, f func()) *timer {
+	t := &timer{}
+	t.callback = js.FuncOf(func(js.Value, []js.Value) any {
+		t.done = true
+		t.callback.Release()
 		f()
 		return nil
 	})
-	return js.Global().Call("setTimeout", callback, ms)
+	t.id = js.Global().Call("setTimeout", t.callback, ms)
+	return t
 }
 
-func clearTimer(timer js.Value) {
-	if !timer.IsNull() {
-		js.Global().Call("clearTimeout", timer)
+// clearTimer は予約を取り消す（js.Func も手放す。呼ばれないと残り続けるため）。nil や実行済みなら何もしない。
+func clearTimer(t *timer) {
+	if t == nil || t.done {
+		return
 	}
+	t.done = true
+	js.Global().Call("clearTimeout", t.id)
+	t.callback.Release()
 }
 
 func query(root js.Value, selector string) js.Value { return root.Call("querySelector", selector) }
