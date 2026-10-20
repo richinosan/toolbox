@@ -137,6 +137,11 @@ const DATE_IN_TEXT = new RegExp(
   "g",
 );
 
+export type FormatLinesOptions = {
+  /** 指定すると、この日を起算日とした残り日数を日付の後ろに「（あと 1 日）」のように付ける */
+  daysFrom?: luxon.DateTime;
+};
+
 /**
  * 行ごとに日付を整形する。行全体が日付ならその行を、文の中に日付があればその部分だけを
  * 「2026年10月01日(木)」の形式に置き換え、残りの文字はそのまま出力する。
@@ -145,15 +150,21 @@ const DATE_IN_TEXT = new RegExp(
 export function formatLines(
   input: string,
   now = luxon.DateTime.now(),
+  options: FormatLinesOptions = {},
 ): MultiLineResult {
   const passedLines: number[] = [];
   let parsedCount = 0;
+  const { daysFrom } = options;
+  const format = (info: DateInfo) =>
+    daysFrom
+      ? `${formatJapanese(info)}（${formatDaysLeftShort(daysUntil(info.dateTime, daysFrom))}）`
+      : formatJapanese(info);
   const lines = input.split(/\r\n|\r|\n/).map((line, i) => {
     if (!line.trim()) return line;
     const whole = parseDate(line, now);
     if (whole) {
       parsedCount += 1;
-      return formatJapanese(whole);
+      return format(whole);
     }
     let found = false;
     const replaced = line.replace(
@@ -163,7 +174,7 @@ export function formatLines(
         if (!info) return match;
         found = true;
         parsedCount += 1;
-        return formatJapanese(info);
+        return format(info);
       },
     );
     if (!found) passedLines.push(i + 1);
@@ -190,4 +201,9 @@ export function formatDaysLeft(days: number): string {
   if (days > 0) return `あと ${days} 日`;
   if (days === 0) return "本日中";
   return `期限切れ（${-days} 日超過）`;
+}
+
+/** 複数行の出力で日付の後ろに括弧書きで付ける残り日数。括弧が重ならないよう、過ぎた日は「N 日超過」とだけ書く。 */
+export function formatDaysLeftShort(days: number): string {
+  return days < 0 ? `${-days} 日超過` : formatDaysLeft(days);
 }
