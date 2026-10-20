@@ -33,6 +33,9 @@ type Picker struct {
 	files                                            []model.FontRef
 	searchTimer                                      js.Value
 	renderWebLater                                   js.Func
+	// refs は一覧のボタン（data-font）が指すフォント。ボタンごとにリスナーを付けると、
+	// 検索のたびに作り直すボタンの分だけ js.Func が残るので、ダイアログの 1 つのリスナーで受ける。
+	refs map[string]model.FontRef
 }
 
 // New は dialog 要素（#font-dialog）に操作を結び付ける。
@@ -55,6 +58,7 @@ func New(dialog js.Value) *Picker {
 		fileNote:    q("#font-file-note"),
 		current:     model.Builtin,
 		searchTimer: js.Undefined(),
+		refs:        map[string]model.FontRef{},
 	}
 	p.renderWebLater = js.FuncOf(func(js.Value, []js.Value) any {
 		go p.renderWeb()
@@ -78,6 +82,19 @@ func New(dialog js.Value) *Picker {
 		p.finish(nil)
 	})
 	web.Listen(dialog, "close", func(js.Value) { p.finish(nil) })
+	web.Listen(dialog, "click", func(event js.Value) {
+		target := event.Get("target")
+		if !target.InstanceOf(js.Global().Get("Element")) {
+			return
+		}
+		button := target.Call("closest", ".font-item[data-font]")
+		if button.IsNull() {
+			return
+		}
+		if ref, ok := p.refs[button.Get("dataset").Get("font").String()]; ok {
+			p.finish(&ref)
+		}
+	})
 	web.Listen(p.localButton, "click", func(js.Value) { go p.loadLocal() })
 	web.Listen(p.fileButton, "click", func(js.Value) {
 		p.fileInput.Set("value", "")
@@ -143,7 +160,8 @@ func (p *Picker) item(ref model.FontRef, label, meta, preview string) js.Value {
 	info.Set("className", "font-item__meta")
 	info.Set("textContent", meta)
 	button.Call("append", name, info)
-	web.Listen(button, "click", func(js.Value) { p.finish(&ref) })
+	p.refs[ref.Key()] = ref
+	button.Get("dataset").Set("font", ref.Key())
 	li.Call("append", button)
 	return li
 }
