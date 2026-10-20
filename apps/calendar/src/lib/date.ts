@@ -171,3 +171,23 @@ export function formatLines(
   });
   return { output: lines.join("\n"), passedLines, parsedCount };
 }
+
+/**
+ * 起算日から期限日までの日数（JST の暦日で数える）。期限日が起算日の翌日なら 1、同じ日なら 0、
+ * 過ぎていれば負になる。時刻つきの入力も、その瞬間の JST での日付で数える。
+ */
+export function daysUntil(deadline: luxon.DateTime, start: luxon.DateTime) {
+  // UTC+9 は固定オフセットで夏時間がないので、差はちょうど日数の倍数になる
+  return Math.round(startOfDay(deadline).diff(startOfDay(start), "days").days);
+}
+
+function startOfDay(value: luxon.DateTime) {
+  return value.setZone(TIME_ZONE).startOf("day");
+}
+
+/** 残り日数の表示。明日が期限なら「あと 1 日」、今日なら「本日中」、過ぎていれば「期限切れ（N 日超過）」。 */
+export function formatDaysLeft(days: number): string {
+  if (days > 0) return `あと ${days} 日`;
+  if (days === 0) return "本日中";
+  return `期限切れ（${-days} 日超過）`;
+}
