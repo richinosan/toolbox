@@ -2180,6 +2180,12 @@ const icons = {
     display: none;
   }
 
+  /* 端末のフォントは数千件になることがあるので、見えていない行は描かない */
+  .font-list > :global(li) {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 2.75rem;
+  }
+
   .font-list :global(.font-item) {
     display: flex;
     flex-wrap: wrap;
