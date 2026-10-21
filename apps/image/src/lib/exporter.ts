@@ -135,7 +135,10 @@ export const compress = async (
   };
 };
 
-/** レイヤーを保った PSD。各レイヤーはフィルター込みの画像として書き出す（テキストも画像になる） */
+/**
+ * レイヤーを保った PSD。各レイヤーはフィルター込みの画像として書き出す（テキストも画像になる）。
+ * 背面のフィルターは、掛けた結果を別のレイヤーにする
+ */
 export const psd = async (
   doc: model.Doc,
   assets: model.Assets,
@@ -153,7 +156,20 @@ export const psd = async (
     context.fillRect(0, 0, doc.width, doc.height);
     children.push({ name: "背景", left: 0, top: 0, canvas });
   }
-  for (const layer of doc.layers) {
+  for (const [index, layer] of doc.layers.entries()) {
+    // PSD には背面のフィルターが無いので、掛けた結果を 1 枚のレイヤーにしてすぐ下に置く
+    const backdrop = model.hasFilters(layer.backdrop)
+      ? cache.backdrop(doc, assets, index, null, doc.background)
+      : null;
+    if (backdrop)
+      children.push({
+        name: `${layer.name}（背面のフィルター）`,
+        left: backdrop.x,
+        top: backdrop.y,
+        canvas: backdrop.canvas,
+        opacity: layer.opacity / 100,
+        hidden: !layer.visible,
+      });
     const { canvas, pad } = cache.get(layer, assets);
     children.push({
       name: layer.name,

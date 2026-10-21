@@ -61,6 +61,11 @@ type LayerBase = {
   width: number;
   height: number;
   filters: Filters;
+  /**
+   * 背面のフィルター（CSS の backdrop-filter と同じ考え方）。
+   * レイヤーの形の範囲だけ、下に重なっている絵にフィルターを掛けてから、その上にレイヤーを描く
+   */
+  backdrop: Filters;
 };
 
 export type ImageLayer = LayerBase & {
@@ -200,6 +205,7 @@ const base = (
   width,
   height,
   filters: { ...defaultFilters },
+  backdrop: { ...defaultFilters },
 });
 
 /** 同じ種類のレイヤーの数から「テキスト 2」のような名前を付ける */
