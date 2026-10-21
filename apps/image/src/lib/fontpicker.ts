@@ -5,6 +5,13 @@ const $ = <T extends Element>(root: ParentNode, selector: string) =>
   root.querySelector<T>(selector)!;
 
 const LIMIT = 120;
+const LOCAL_CHUNK = 100;
+
+// 背景のタブでも止まらないよう、requestAnimationFrame ではなく setTimeout で譲る
+const yieldToBrowser = () =>
+  new Promise<void>((done) => {
+    setTimeout(done, 0);
+  });
 
 export const create = (dialog: HTMLDialogElement, signal: AbortSignal) => {
   const form = $<HTMLFormElement>(dialog, "form");
@@ -113,29 +120,41 @@ export const create = (dialog: HTMLDialogElement, signal: AbortSignal) => {
     else if (items.length === 0) webNote.textContent = "見つかりませんでした。";
   };
 
-  const renderLocal = () => {
+  // 端末のフォントは数千件あることもあるので、件数で打ち切らずに少しずつ追加して
+  // 画面を止めないようにする。検索し直したら前の追加は途中でやめる
+  let localRun = 0;
+
+  const renderLocal = async () => {
     if (!localFamilies) return;
+    const run = ++localRun;
     const query = localSearch.value.trim().toLowerCase();
     const filtered = localFamilies.filter(
       (family) => !query || family.family.toLowerCase().includes(query),
     );
-    localList.replaceChildren(
-      ...filtered.slice(0, 300).map((family) =>
-        item(
-          family.ref,
-          family.family,
-          family.ref.faces?.bold ? "太字あり" : "",
-          // 端末のフォントは通信なしで見本を出せる
-          `"${family.family.replace(/["\\]/g, "")}", sans-serif`,
+    localList.replaceChildren();
+    if (filtered.length === 0) {
+      localNote.textContent = "見つかりませんでした。";
+      return;
+    }
+    for (let start = 0; start < filtered.length; start += LOCAL_CHUNK) {
+      if (start > 0) {
+        localNote.textContent = `${filtered.length} 件中 ${start} 件を表示しました…`;
+        await yieldToBrowser();
+        if (run !== localRun) return;
+      }
+      localList.append(
+        ...filtered.slice(start, start + LOCAL_CHUNK).map((family) =>
+          item(
+            family.ref,
+            family.family,
+            family.ref.faces?.bold ? "太字あり" : "",
+            // 端末のフォントは通信なしで見本を出せる
+            `"${family.family.replace(/["\\]/g, "")}", sans-serif`,
+          ),
         ),
-      ),
-    );
-    localNote.textContent =
-      filtered.length > 300
-        ? `${filtered.length} 件中 300 件を表示しています。名前で絞り込んでください。`
-        : filtered.length === 0
-          ? "見つかりませんでした。"
-          : "";
+      );
+    }
+    localNote.textContent = `${filtered.length} 件`;
   };
 
   const renderFiles = () => {
@@ -150,7 +169,7 @@ export const create = (dialog: HTMLDialogElement, signal: AbortSignal) => {
     searchTimer = setTimeout(() => void renderWeb(), 200);
   });
   japanese.addEventListener("change", () => void renderWeb());
-  localSearch.addEventListener("input", renderLocal);
+  localSearch.addEventListener("input", () => void renderLocal());
   form.addEventListener("change", (event) => {
     if (
       event.target instanceof HTMLInputElement &&
@@ -175,7 +194,7 @@ export const create = (dialog: HTMLDialogElement, signal: AbortSignal) => {
       localFamilies = await fonts.queryLocal();
       localSearch.hidden = false;
       localButton.hidden = true;
-      renderLocal();
+      await renderLocal();
     } catch {
       localNote.textContent =
         "端末のフォントを読めませんでした。ブラウザの確認で「許可」を選ぶと読めます。";
@@ -219,7 +238,7 @@ export const create = (dialog: HTMLDialogElement, signal: AbortSignal) => {
         resolve = done;
         search.value = "";
         void renderWeb();
-        renderLocal();
+        void renderLocal();
         renderFiles();
         showTab();
         dialog.showModal();
