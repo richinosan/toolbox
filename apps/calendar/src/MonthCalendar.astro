@@ -1,0 +1,604 @@
+---
+// 月のカレンダー表示。選択中の日付は親ページが data-selected と calendar:select イベントで渡し、
+// 日付を押すと calendar:pick イベント（detail に yyyy-mm-dd）を親ページに返す。
+const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+const months = Array.from({ length: 12 }, (_, index) => index + 1);
+---
+
+<section id="month" class="card month" aria-labelledby="month-title">
+  <div class="month__head">
+    <!-- 遠い月へ何度も「次の月」を押さずに済むよう、見出しを押すと年と月を選ぶ画面に切り替える -->
+    <h2 class="month__title">
+      <button
+        id="month-title-button"
+        class="month__title-button"
+        type="button"
+        aria-expanded="false"
+        aria-controls="month-picker"
+      >
+        <span id="month-title" aria-live="polite">
+          &nbsp;
+        </span>
+        <svg
+          class="month__title-icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m6 9 6 6 6-6"></path>
+        </svg>
+      </button>
+    </h2>
+    <div class="month__nav">
+      <button
+        id="month-today"
+        class="month__button month__button--text"
+        type="button"
+      >
+        今日
+      </button>
+      <button
+        id="month-prev"
+        class="month__button"
+        type="button"
+        aria-label="前の月"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m15 18-6-6 6-6"></path>
+        </svg>
+      </button>
+      <button
+        id="month-next"
+        class="month__button"
+        type="button"
+        aria-label="次の月"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m9 18 6-6-6-6"></path>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="month__body">
+    <table id="month-days" class="month__grid">
+      <thead>
+        <tr>
+          {weekdays.map((name, index) => (
+            <th
+              scope="col"
+              class:list={[
+                "month__weekday",
+                index === 0 && "month__weekday--sun",
+                index === 6 && "month__weekday--sat",
+              ]}
+            >
+              {name}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <!-- 月によって行数が変わると高さが揺れるので、常に 6 週分を描く -->
+      <tbody id="month-body"></tbody>
+    </table>
+
+    <div id="month-picker" class="month__picker" hidden>
+      {months.map((value) => (
+        <button class="month__month" type="button" data-month={value}>
+          {value}月
+        </button>
+      ))}
+    </div>
+  </div>
+
+  <ul id="month-holidays" class="month__holidays"></ul>
+</section>
+
+<script>
+  import * as luxon from "luxon";
+  import * as motion from "#ui/motion.ts";
+  import * as date from "./lib/date";
+  import * as holiday from "./lib/holiday";
+
+  const weekdayNames = ["日", "月", "火", "水", "木", "金", "土"];
+
+  const toKey = (year: number, month: number, day: number) =>
+    `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+  // Date.UTC は 0〜99 年を 1900 年代にずらすので setUTCFullYear で組み立てる
+  const utcDate = (year: number, month: number, day: number) => {
+    const value = new Date(0);
+    value.setUTCFullYear(year, month - 1, day);
+    return value;
+  };
+
+  const init = () => {
+    const root = document.querySelector<HTMLElement>("#month");
+    if (!root) return;
+    const title = root.querySelector<HTMLElement>("#month-title")!;
+    const body = root.querySelector<HTMLElement>("#month-body")!;
+    const holidayList = root.querySelector<HTMLElement>("#month-holidays")!;
+    const prev = root.querySelector<HTMLButtonElement>("#month-prev")!;
+    const next = root.querySelector<HTMLButtonElement>("#month-next")!;
+    const todayButton = root.querySelector<HTMLButtonElement>("#month-today")!;
+    const titleButton = root.querySelector<HTMLButtonElement>(
+      "#month-title-button",
+    )!;
+    const days = root.querySelector<HTMLElement>("#month-days")!;
+    const picker = root.querySelector<HTMLElement>("#month-picker")!;
+    const monthButtons = [
+      ...picker.querySelectorAll<HTMLButtonElement>(".month__month"),
+    ];
+
+    const now = luxon.DateTime.now().setZone(date.TIME_ZONE);
+    const today = toKey(now.year, now.month, now.day);
+    let selected = root.dataset.selected ?? "";
+    // 表示中の年月。選択中の日付があればその月、なければ今月
+    let year = now.year;
+    let month = now.month;
+    const showSelectedMonth = () => {
+      const [y, m] = selected.split("-").map(Number);
+      if (y && m) {
+        year = y;
+        month = m;
+      }
+    };
+    showSelectedMonth();
+    // 年と月を選ぶ画面を開いているときは、前後のボタンで 1 年ずつ動かす
+    let picking = false;
+    let pickerYear = year;
+
+    const renderPicker = (animate = false) => {
+      title.textContent = `${pickerYear}年`;
+      for (const button of monthButtons) {
+        const value = Number(button.dataset.month);
+        button.setAttribute(
+          "aria-pressed",
+          String(pickerYear === year && value === month),
+        );
+        if (pickerYear === now.year && value === now.month)
+          button.setAttribute("aria-current", "date");
+        else button.removeAttribute("aria-current");
+      }
+      prev.disabled = pickerYear <= 1;
+      next.disabled = pickerYear >= 9999;
+      if (animate) motion.play(picker, "pop");
+    };
+
+    const setPicking = (value: boolean) => {
+      picking = value;
+      pickerYear = year;
+      picker.hidden = !value;
+      days.classList.toggle("month__grid--hidden", value);
+      titleButton.setAttribute("aria-expanded", String(value));
+      prev.setAttribute("aria-label", value ? "前の年" : "前の月");
+      next.setAttribute("aria-label", value ? "次の年" : "次の月");
+    };
+
+    const render = (animate = false) => {
+      title.textContent = `${year}年${month}月`;
+      const first = utcDate(year, month, 1);
+      const start = first.getUTCDay();
+      const rows: HTMLTableRowElement[] = [];
+      const holidays: [day: number, weekday: number, name: string][] = [];
+      let unknown = false;
+      for (let week = 0; week < 6; week++) {
+        const row = document.createElement("tr");
+        for (let weekday = 0; weekday < 7; weekday++) {
+          const value = utcDate(year, month, 1 + week * 7 + weekday - start);
+          const y = value.getUTCFullYear();
+          const m = value.getUTCMonth() + 1;
+          const d = value.getUTCDate();
+          const key = toKey(y, m, d);
+          const inMonth = m === month;
+          const name = y >= 1 ? holiday.holidayName(y, m, d) : null;
+          if (inMonth && name) holidays.push([d, weekday, name]);
+          if (inMonth && name === undefined) unknown = true;
+
+          const cell = document.createElement("td");
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "month__day";
+          button.textContent = String(d);
+          button.dataset.date = key;
+          button.classList.toggle("month__day--outside", !inMonth);
+          button.classList.toggle("month__day--sun", weekday === 0 || !!name);
+          button.classList.toggle("month__day--sat", weekday === 6 && !name);
+          button.classList.toggle("month__day--holiday", !!name);
+          if (key === today) button.setAttribute("aria-current", "date");
+          button.setAttribute("aria-pressed", String(key === selected));
+          button.setAttribute(
+            "aria-label",
+            `${y}年${m}月${d}日 ${weekdayNames[weekday]}曜日${name ? ` ${name}` : ""}`,
+          );
+          if (name) button.title = name;
+          // 西暦 1 年より前は入力として扱えないので選べなくする
+          button.disabled = y < 1;
+          cell.append(button);
+          row.append(cell);
+        }
+        rows.push(row);
+      }
+      body.replaceChildren(...rows);
+
+      const items = holidays.map(([d, weekday, name]) => {
+        const item = document.createElement("li");
+        const day = document.createElement("span");
+        day.className = "month__holiday-date";
+        day.textContent = `${d}日(${weekdayNames[weekday]})`;
+        item.append(day, name);
+        return item;
+      });
+      if (unknown) {
+        const item = document.createElement("li");
+        item.className = "month__holiday-note";
+        item.textContent = `祝日は ${holiday.LAST_YEAR} 年まで表示できます。`;
+        items.push(item);
+      } else if (items.length === 0) {
+        const item = document.createElement("li");
+        item.className = "month__holiday-note";
+        item.textContent = "この月に祝日・休日はありません。";
+        items.push(item);
+      }
+      holidayList.replaceChildren(...items);
+      // 範囲外（西暦 1 年より前・9999 年より後）には移動しない
+      prev.disabled = year <= 1 && month <= 1;
+      next.disabled = year >= 9999 && month >= 12;
+      if (animate) motion.play(body, "pop");
+    };
+
+    const move = (delta: number) => {
+      if (picking) {
+        pickerYear = Math.min(9999, Math.max(1, pickerYear + delta));
+        renderPicker(true);
+        return;
+      }
+      const index = year * 12 + (month - 1) + delta;
+      year = Math.floor(index / 12);
+      month = (index % 12) + 1;
+      render(true);
+    };
+    prev.addEventListener("click", () => move(-1));
+    next.addEventListener("click", () => move(1));
+    todayButton.addEventListener("click", () => {
+      const changed = picking || year !== now.year || month !== now.month;
+      year = now.year;
+      month = now.month;
+      setPicking(false);
+      render(changed);
+    });
+    titleButton.addEventListener("click", () => {
+      setPicking(!picking);
+      if (picking) renderPicker(true);
+      else render(true);
+    });
+    picker.addEventListener("click", (event) => {
+      const button = (event.target as Element).closest<HTMLButtonElement>(
+        ".month__month",
+      );
+      if (!button) return;
+      year = pickerYear;
+      month = Number(button.dataset.month);
+      setPicking(false);
+      render(true);
+      titleButton.focus();
+    });
+    // Esc で月の表示に戻る
+    root.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !picking) return;
+      setPicking(false);
+      render(true);
+      titleButton.focus();
+    });
+    body.addEventListener("click", (event) => {
+      const button = (event.target as Element).closest<HTMLButtonElement>(
+        ".month__day",
+      );
+      if (!button?.dataset.date) return;
+      root.dispatchEvent(
+        new CustomEvent("calendar:pick", { detail: button.dataset.date }),
+      );
+    });
+    // 親ページで日付が変わったら、その日を選択してその月を表示する
+    root.addEventListener("calendar:select", (event) => {
+      const value = (event as CustomEvent<string>).detail;
+      if (value === selected) return;
+      const before = `${year}-${month}`;
+      selected = value;
+      showSelectedMonth();
+      if (picking) setPicking(false);
+      render(before !== `${year}-${month}`);
+    });
+
+    render();
+  };
+  document.addEventListener("astro:page-load", init);
+</script>
+
+<style>
+  .month {
+    display: grid;
+    gap: var(--space-4);
+    align-content: start;
+  }
+
+  .month__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .month__title {
+    font-size: 1.125rem;
+  }
+
+  .month__title-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 2.25rem;
+    margin-left: calc(var(--space-2) * -1);
+    padding: 0 var(--space-2);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+
+  .month__title-button:hover {
+    background: var(--color-bg);
+  }
+
+  .month__title-button[aria-expanded="true"] {
+    border-color: var(--color-border);
+  }
+
+  .month__title-icon {
+    width: 1rem;
+    height: 1rem;
+    color: var(--color-text-muted);
+    transition: rotate 0.15s;
+  }
+
+  .month__title-button[aria-expanded="true"] .month__title-icon {
+    rotate: 180deg;
+  }
+
+  /* 日付の表と月の選択を同じ場所に重ね、切り替えても高さが変わらないようにする */
+  .month__body {
+    display: grid;
+  }
+
+  .month__body > * {
+    grid-area: 1 / 1;
+  }
+
+  .month__grid--hidden {
+    visibility: hidden;
+  }
+
+  .month__picker {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .month__picker[hidden] {
+    display: none;
+  }
+
+  .month__month {
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+
+  .month__month:hover:not([aria-pressed="true"]) {
+    background: var(--color-bg);
+  }
+
+  .month__month[aria-current="date"] {
+    border-color: var(--color-accent);
+    font-weight: 700;
+  }
+
+  .month__month[aria-pressed="true"] {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    font-weight: 700;
+  }
+
+  .month__nav {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .month__button {
+    display: inline-grid;
+    place-items: center;
+    min-width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-surface);
+    color: var(--color-text-muted);
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .month__button--text {
+    padding-inline: var(--space-3);
+  }
+
+  .month__button:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-text);
+  }
+
+  .month__button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .month__button svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+
+  .month__grid {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    text-align: center;
+  }
+
+  .month__weekday {
+    padding-bottom: var(--space-1);
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 400;
+  }
+
+  .month__grid :global(td) {
+    padding: 1px;
+  }
+
+  .month :global(.month__day) {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 2.75rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition:
+      background-color 0.15s,
+      border-color 0.15s;
+  }
+
+  .month :global(.month__day:hover:not(:disabled, [aria-pressed="true"])) {
+    background: var(--color-bg);
+  }
+
+  .month :global(.month__day:disabled) {
+    visibility: hidden;
+  }
+
+  .month__weekday--sun,
+  .month :global(.month__day--sun) {
+    color: light-dark(#c5221f, #f28b82);
+  }
+
+  .month__weekday--sat,
+  .month :global(.month__day--sat) {
+    color: light-dark(#1a5fc4, #8ab4f8);
+  }
+
+  .month :global(.month__day--outside) {
+    opacity: 0.4;
+  }
+
+  /* 祝日は数字の下に小さな印をつける（名前は下の一覧とツールチップで出す） */
+  .month :global(.month__day--holiday::after) {
+    content: "";
+    position: absolute;
+    bottom: 12%;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentColor;
+    transform: translateX(-50%);
+  }
+
+  .month :global(.month__day[aria-current="date"]) {
+    border-color: var(--color-accent);
+    font-weight: 700;
+  }
+
+  .month :global(.month__day[aria-pressed="true"]) {
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent);
+    font-weight: 700;
+  }
+
+  .month__holidays {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+    padding: var(--space-3) 0 0;
+    border-top: 1px solid var(--color-border);
+    list-style: none;
+    font-size: 0.875rem;
+  }
+
+  .month :global(.month__holiday-date) {
+    display: inline-block;
+    min-width: 4.5em;
+    margin-right: var(--space-2);
+    color: light-dark(#c5221f, #f28b82);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .month :global(.month__holiday-note) {
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .month__title-button,
+    .month__title-icon,
+    .month__month {
+      transition: none;
+    }
+
+    .month :global(.month__day) {
+      transition: none;
+    }
+  }
+</style>
