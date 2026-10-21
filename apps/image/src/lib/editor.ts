@@ -1246,6 +1246,12 @@ export const mount = (root: HTMLElement) => {
   const propInputs = () =>
     props.querySelectorAll<HTMLInputElement>("[data-prop]");
 
+  const strokeNoneInputs = () =>
+    props.querySelectorAll<HTMLInputElement>("[data-stroke-none]");
+
+  /** 縁取り・線を「なし」にする前の太さ（戻したときに使う） */
+  const lastStrokeWidth = new Map<string, number>();
+
   const showOutput = (input: HTMLInputElement) => {
     const output = props.querySelector<HTMLOutputElement>(
       `output[for="${input.id}"]`,
@@ -1315,6 +1321,8 @@ export const mount = (root: HTMLElement) => {
     }
     if (layer.type === "path")
       pathFill.value = layer.parts[0]?.color ?? "#ffffff";
+    for (const input of strokeNoneInputs())
+      input.checked = "strokeWidth" in layer && layer.strokeWidth === 0;
   }
 
   const docInput = (name: string) =>
@@ -1741,6 +1749,28 @@ export const mount = (root: HTMLElement) => {
         ...part,
         color: input.value,
       }));
+      requestDraw();
+      return;
+    }
+    // 縁取り・線の「なし」
+    if (
+      input instanceof HTMLInputElement &&
+      input.dataset["strokeNone"] !== undefined
+    ) {
+      if (!("strokeWidth" in layer)) return;
+      if (input.checked) {
+        if (layer.strokeWidth > 0)
+          lastStrokeWidth.set(layer.id, layer.strokeWidth);
+        layer.strokeWidth = 0;
+      } else {
+        layer.strokeWidth =
+          lastStrokeWidth.get(layer.id) ?? Number(input.dataset["default"]);
+      }
+      if (layer.type === "text") {
+        textChanged(layer);
+        renderEditors(layer);
+        syncGeometry();
+      }
       requestDraw();
       return;
     }
@@ -2508,6 +2538,31 @@ export const mount = (root: HTMLElement) => {
     requestDraw();
   };
 
+  /** 図形をキャンバスに合わせる。keepRatio が true なら縦横比を保ってキャンバスに収め、中央に置く */
+  const fitToCanvas = (keepRatio: boolean) => {
+    const layer = selected();
+    if (!doc || !layer || layer.type === "image" || layer.type === "text")
+      return;
+    if (keepRatio) {
+      const scale = Math.min(
+        doc.width / layer.width,
+        doc.height / layer.height,
+      );
+      layer.width = Math.max(1, Math.round(layer.width * scale));
+      layer.height = Math.max(1, Math.round(layer.height * scale));
+      layer.x = Math.round((doc.width - layer.width) / 2);
+      layer.y = Math.round((doc.height - layer.height) / 2);
+    } else {
+      layer.x = 0;
+      layer.y = 0;
+      layer.width = doc.width;
+      layer.height = doc.height;
+    }
+    commit();
+    syncGeometry();
+    requestDraw();
+  };
+
   const nudge = (dx: number, dy: number) => {
     const layer = selected();
     if (!layer) return;
@@ -2543,6 +2598,8 @@ export const mount = (root: HTMLElement) => {
     "layer-down": () => moveLayer(-1),
     "layer-duplicate": duplicate,
     "layer-delete": remove,
+    "fit-fill": () => fitToCanvas(false),
+    "fit-contain": () => fitToCanvas(true),
     "pick-font": () => void pickFont(),
     crop: startCrop,
     "crop-apply": () => void applyCrop(),
