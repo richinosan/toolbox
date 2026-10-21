@@ -1240,6 +1240,12 @@ export const mount = (root: HTMLElement) => {
   const propInputs = () =>
     props.querySelectorAll<HTMLInputElement>("[data-prop]");
 
+  const strokeNoneInputs = () =>
+    props.querySelectorAll<HTMLInputElement>("[data-stroke-none]");
+
+  /** 縁取り・線を「なし」にする前の太さ（戻したときに使う） */
+  const lastStrokeWidth = new Map<string, number>();
+
   const showOutput = (input: HTMLInputElement) => {
     const output = props.querySelector<HTMLOutputElement>(
       `output[for="${input.id}"]`,
@@ -1309,6 +1315,8 @@ export const mount = (root: HTMLElement) => {
     }
     if (layer.type === "path")
       pathFill.value = layer.parts[0]?.color ?? "#ffffff";
+    for (const input of strokeNoneInputs())
+      input.checked = "strokeWidth" in layer && layer.strokeWidth === 0;
   }
 
   const docInput = (name: string) =>
@@ -1734,6 +1742,28 @@ export const mount = (root: HTMLElement) => {
         ...part,
         color: input.value,
       }));
+      requestDraw();
+      return;
+    }
+    // 縁取り・線の「なし」
+    if (
+      input instanceof HTMLInputElement &&
+      input.dataset["strokeNone"] !== undefined
+    ) {
+      if (!("strokeWidth" in layer)) return;
+      if (input.checked) {
+        if (layer.strokeWidth > 0)
+          lastStrokeWidth.set(layer.id, layer.strokeWidth);
+        layer.strokeWidth = 0;
+      } else {
+        layer.strokeWidth =
+          lastStrokeWidth.get(layer.id) ?? Number(input.dataset["default"]);
+      }
+      if (layer.type === "text") {
+        textChanged(layer);
+        renderEditors(layer);
+        syncGeometry();
+      }
       requestDraw();
       return;
     }
