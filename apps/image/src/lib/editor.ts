@@ -152,6 +152,14 @@ const readProp = (layer: model.Layer, path: string): unknown => {
   return (layer as Record<string, unknown>)[path];
 };
 
+/** 文字が無いときは、編集欄に入力の案内（プレースホルダー）を出す */
+const markEmpty = (editor: HTMLElement, layer: model.TextLayer) => {
+  editor.toggleAttribute(
+    "data-empty",
+    layer.runs.every((run) => !run.text),
+  );
+};
+
 /** 明るい色か（パネルの編集欄で、白っぽい文字を暗い背景で見せる） */
 const isLight = (color: string) => {
   const value = Number.parseInt(color.slice(1), 16);
@@ -353,6 +361,7 @@ export const mount = (root: HTMLElement) => {
   const redoButton = $<HTMLButtonElement>(root, '[data-action="redo"]');
   const rich = $<HTMLElement>(root, "#rich");
   const stageText = $<HTMLElement>(root, "#stage-text");
+  const textBar = $<HTMLElement>(root, "#text-bar");
   const fontName = $<HTMLElement>(root, "#font-name");
   const fontMissing = $<HTMLElement>(root, "#font-missing");
   const fontDialog = $<HTMLDialogElement>(root, "#font-dialog");
@@ -1344,6 +1353,7 @@ export const mount = (root: HTMLElement) => {
     });
     rich.style.textAlign = layer.align;
     rich.classList.toggle("rich--dark", isLight(layer.runs[0]!.style.color));
+    markEmpty(rich, layer);
   };
 
   let stageTextScale = 0;
@@ -1355,6 +1365,7 @@ export const mount = (root: HTMLElement) => {
       effects: effectsOf(layer),
     });
     stageText.style.textAlign = layer.align;
+    markEmpty(stageText, layer);
   };
 
   /** 書式を変えたあと、両方の編集欄を作り直す（入力中の編集欄の選択範囲は保つ） */
@@ -1480,6 +1491,7 @@ export const mount = (root: HTMLElement) => {
       Math.max(0, (charRange?.start ?? 1) - 1),
     );
     layer.runs = richedit.read(editor, fallback);
+    markEmpty(editor, layer);
     // 変換中（IME）は DOM を作り直さない
     if (!(event as InputEvent).isComposing && !richedit.isClean(editor)) {
       const range = richedit.getSelection(editor);
@@ -1582,6 +1594,7 @@ export const mount = (root: HTMLElement) => {
     if (!editingId) return;
     editingId = null;
     stageText.hidden = true;
+    textBar.hidden = true;
     stageText.replaceChildren();
     clearHighlight();
     requestDraw();
@@ -1604,6 +1617,7 @@ export const mount = (root: HTMLElement) => {
     if (selectedId !== layer.id) select(layer.id);
     editingId = layer.id;
     stageText.hidden = false;
+    textBar.hidden = false;
     renderStageText(layer);
     positionStageText();
     stageText.focus({ preventScroll: true });
@@ -2536,6 +2550,7 @@ export const mount = (root: HTMLElement) => {
     crop: startCrop,
     "crop-apply": () => void applyCrop(),
     "crop-cancel": cancelCrop,
+    "text-done": finishEditing,
     "to-path": () => void convertToPath(),
   };
 
