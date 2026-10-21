@@ -2,6 +2,7 @@
 import * as shared from "#shared";
 import Layout from "#ui/Layout.astro";
 import ToolIcon from "#ui/ToolIcon.astro";
+import MonthCalendar from "../MonthCalendar.astro";
 
 const tool = shared.tools.find((t) => t.id === "calendar")!;
 ---
@@ -64,6 +65,11 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       reveal: "#mode-multi",
       title: "残り日数",
       body: "オンにすると、出力の日付の後ろに今日から数えた残り日数を「（あと 1 日）」「（本日中）」のように付けます。オン・オフは次に開いたときも覚えています。",
+    },
+    {
+      target: "#month",
+      title: "月のカレンダー",
+      body: "入力した日付の月を表示します。祝日・休日は赤字と印で示し、下に一覧を出します。日付を押すと入力欄に入ります（複数行モードでは 1 行追加します）。",
     },
   ]}
 >
@@ -318,6 +324,8 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
         <p id="multi-note" class="note" aria-live="polite"></p>
       </div>
     </section>
+
+    <MonthCalendar />
   </div>
 </Layout>
 
@@ -345,6 +353,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     const copyButton =
       document.querySelector<HTMLButtonElement>("#copy-unix-time")!;
     const copyTooltip = document.querySelector<HTMLElement>("#copy-tooltip")!;
+    const month = document.querySelector<HTMLElement>("#month")!;
     const startText = document.querySelector<HTMLInputElement>("#start-text")!;
     const startPicker =
       document.querySelector<HTMLInputElement>("#start-picker")!;
@@ -425,6 +434,11 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       unixTime.textContent = nextUnixTime;
       copyButton.disabled = !info;
       syncPicker(picker, pickerLabel, info);
+      // 月のカレンダーにも選択中の日付を伝える（初期化前でも読めるよう data 属性にも残す）
+      month.dataset.selected = picker.value;
+      month.dispatchEvent(
+        new CustomEvent("calendar:select", { detail: picker.value }),
+      );
       note.classList.toggle("note--error", !info && text.value.trim() !== "");
       if (info) {
         note.textContent = `${info.dateTime.toFormat("yyyy-MM-dd HH:mm:ss")}（${date.TIME_ZONE_LABEL}）として計算しています。`;
@@ -614,6 +628,19 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     });
     renderMulti();
 
+    // 月のカレンダーで日付を押したら、1件モードでは入力欄を置き換え、複数行モードでは 1 行追加する
+    month.addEventListener("calendar:pick", (event) => {
+      const value = (event as CustomEvent<string>).detail;
+      if (panels.multi.hidden) {
+        text.value = value;
+        render();
+        return;
+      }
+      const current = multiInput.value.replace(/\n+$/, "");
+      multiInput.value = current ? `${current}\n${value}` : value;
+      renderMulti();
+    });
+
     const today = luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate();
     if (!text.value) text.value = today ?? "";
     if (!startText.value) startText.value = today ?? "";
@@ -641,6 +668,29 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     width: 100%;
     max-width: 520px;
     margin-inline: auto;
+  }
+
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+    align-items: start;
+  }
+
+  .page > .tool-header {
+    margin-bottom: 0;
+  }
+
+  /* 広い画面では右側に月のカレンダーを並べる。狭い画面では入力の下に回す */
+  @media (min-width: 880px) {
+    .page {
+      max-width: 900px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
+    }
+
+    .tool-header {
+      grid-column: 1 / -1;
+    }
   }
 
   .mode {
