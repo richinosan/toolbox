@@ -263,7 +263,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
           <textarea
             id="multi-input"
             class="field__input multi__textarea"
-            rows="6"
+            rows="3"
             spellcheck="false"
             autocomplete="off"
             placeholder={"2026-10-01\n10/2\n2026年10月3日(土) 締め切り"}
@@ -316,7 +316,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
           <textarea
             id="multi-output"
             class="field__input multi__textarea"
-            rows="6"
+            rows="3"
             readonly
             spellcheck="false"
           ></textarea>
@@ -334,6 +334,15 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
   import * as motion from "#ui/motion.ts";
   import * as date from "../lib/date";
   import * as holiday from "../lib/holiday";
+
+  // textarea の高さを中身（折り返しを含む行数）に合わせる
+  const fitHeight = (area: HTMLTextAreaElement) => {
+    // いったん縮めると文書が短くなってスクロール位置がずれるので、測ったあとに戻す
+    const scrollY = window.scrollY;
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight + area.offsetHeight - area.clientHeight}px`;
+    window.scrollTo({ top: scrollY, behavior: "instant" });
+  };
 
   // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
   const init = () => {
@@ -590,6 +599,22 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       }
     });
 
+    // 入力欄と出力欄は、中身の行数（折り返しを含む）に合わせて高さを伸ばす。最低 3 行分
+    const fitMulti = () => {
+      if (panels.multi.hidden) return;
+      fitHeight(multiInput);
+      fitHeight(multiOutput);
+    };
+    // 画面幅が変わると折り返しが変わるので測り直す（パネルを表示したときも幅が 0 から変わる）
+    let fittedWidth = 0;
+    new ResizeObserver(() => {
+      if (multiInput.clientWidth === fittedWidth) return;
+      fittedWidth = multiInput.clientWidth;
+      fitMulti();
+    }).observe(multiInput);
+    // Web フォントの読み込みで文字幅が変わったときも測り直す
+    void document.fonts.ready.then(fitMulti);
+
     const renderMulti = () => {
       const now = luxon.DateTime.now();
       const result = date.formatLines(
@@ -598,6 +623,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
         multiDays.checked ? { daysFrom: now } : {},
       );
       multiOutput.value = result.output;
+      fitMulti();
       copyMulti.disabled = !multiInput.value.trim();
       const passed =
         result.passedLines.length > 0
@@ -794,9 +820,10 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     transform: translate(0, 0);
   }
 
+  /* 高さは行数に合わせてスクリプトで決めるので、手で変える必要はない */
   .multi__textarea {
-    min-height: 9rem;
-    resize: vertical;
+    overflow: hidden;
+    resize: none;
     font-variant-numeric: tabular-nums;
     line-height: 1.6;
   }
