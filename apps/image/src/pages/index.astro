@@ -62,7 +62,7 @@ const icons = {
     {
       target: "#props-panel",
       title: "設定",
-      body: "選んだレイヤーの文字・フォント・色・大きさと、カラーフィルターやガウスぼかしを変えます。テキストは文字を選ぶと、その文字だけの書式を変えられます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
+      body: "選んだレイヤーの文字・フォント・色・大きさと、カラーフィルターやガウスぼかしを変えます。テキストは文字を選ぶと、その文字だけの書式を変えられます。図形は「キャンバスに合わせる」で、キャンバス全体に広げたり、縦横比を保ったまま収めたりできます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
     },
     {
       target: "#file-tools",
@@ -753,6 +753,25 @@ const icons = {
                         inputmode="numeric"
                       />
                     </label>
+                  </div>
+                  <div class="fit" data-for="rect ellipse path">
+                    <span class="field__label">キャンバスに合わせる</span>
+                    <div class="fit__buttons">
+                      <button
+                        class="button button--small"
+                        type="button"
+                        data-action="fit-fill"
+                      >
+                        全体に広げる
+                      </button>
+                      <button
+                        class="button button--small"
+                        type="button"
+                        data-action="fit-contain"
+                      >
+                        比率を保つ
+                      </button>
+                    </div>
                   </div>
                   <div class="range">
                     <label class="field__label" for="prop-opacity">
@@ -2072,6 +2091,21 @@ const icons = {
     border-radius: 8px;
     background: light-dark(#fff4e5, #3a2a12);
     color: light-dark(#7a4b00, #ffd59a);
+  }
+
+  .fit {
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .fit__buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-1);
+  }
+
+  .fit__buttons .button {
+    padding-inline: 0;
   }
 
   .convert {
