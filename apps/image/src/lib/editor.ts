@@ -145,10 +145,17 @@ const eyeIcon = (visible: boolean) =>
     ? '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'
     : '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.1 3.9M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4.4-1"/></svg>';
 
+/** "filters.blur" や "backdrop.blur" のような、フィルターの中の値の指定を分ける */
+const filterPath = (layer: model.Layer, path: string) => {
+  const [group, key] = path.split(".");
+  return (group === "filters" || group === "backdrop") && key
+    ? { filters: layer[group] as Record<string, unknown>, key }
+    : null;
+};
+
 const readProp = (layer: model.Layer, path: string): unknown => {
-  if (path.startsWith("filters.")) {
-    return (layer.filters as Record<string, unknown>)[path.slice(8)];
-  }
+  const filter = filterPath(layer, path);
+  if (filter) return filter.filters[filter.key];
   return (layer as Record<string, unknown>)[path];
 };
 
@@ -257,6 +264,7 @@ const scaleLayer = (layer: model.Layer, scale: number) => {
   if ("strokeWidth" in layer) layer.strokeWidth = round(layer.strokeWidth);
   if (layer.type === "rect") layer.radius = round(layer.radius);
   layer.filters.blur = round(layer.filters.blur);
+  layer.backdrop.blur = round(layer.backdrop.blur);
   layer.x = Math.round(layer.x * scale);
   layer.y = Math.round(layer.y * scale);
   if (layer.type === "text") {
@@ -278,11 +286,9 @@ const formatBytes = (bytes: number) =>
     : `${Math.max(1, Math.round(bytes / 1000))} KB`;
 
 const writeProp = (layer: model.Layer, path: string, value: unknown) => {
-  if (path.startsWith("filters.")) {
-    (layer.filters as Record<string, unknown>)[path.slice(8)] = value;
-  } else {
-    (layer as Record<string, unknown>)[path] = value;
-  }
+  const filter = filterPath(layer, path);
+  if (filter) filter.filters[filter.key] = value;
+  else (layer as Record<string, unknown>)[path] = value;
 };
 
 const textChanged = (layer: model.Layer) => {
@@ -1694,6 +1700,7 @@ export const mount = (root: HTMLElement) => {
       width: shape.width,
       height: shape.height,
       filters: layer.filters,
+      backdrop: layer.backdrop,
       type: "path",
       baseWidth: shape.width,
       baseHeight: shape.height,
@@ -1810,11 +1817,15 @@ export const mount = (root: HTMLElement) => {
   props.addEventListener("click", (event) => {
     const target =
       event.target instanceof Element
-        ? event.target.closest<HTMLElement>("[data-action='reset-filters']")
+        ? event.target.closest<HTMLElement>(
+            "[data-action='reset-filters'], [data-action='reset-backdrop']",
+          )
         : null;
     const layer = selected();
     if (!target || !layer) return;
-    layer.filters = { ...model.defaultFilters };
+    if (target.dataset["action"] === "reset-backdrop")
+      layer.backdrop = { ...model.defaultFilters };
+    else layer.filters = { ...model.defaultFilters };
     commit();
     syncPanel();
     requestDraw();
