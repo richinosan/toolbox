@@ -222,6 +222,7 @@ const icons = {
               role="textbox"
               aria-multiline="true"
               aria-label="テキストを編集"
+              data-placeholder="文字を入力"
               spellcheck="false"
               hidden
             ></div>
@@ -286,6 +287,23 @@ const icons = {
                 data-action="crop-apply"
               >
                 切り抜く
+              </button>
+            </div>
+            <div id="text-bar" class="crop-bar text-bar" hidden>
+              <span class="text-bar__label">
+                <svg
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  set:html={icons.text}
+                />
+                テキストを編集中
+              </span>
+              <button
+                class="button button--small button--primary"
+                type="button"
+                data-action="text-done"
+              >
+                完了
               </button>
             </div>
             <p id="toast" class="toast" role="status"></p>
@@ -473,7 +491,7 @@ const icons = {
               <div class="fields" data-for="text">
                 <div class="field">
                   <span id="rich-label" class="field__label">
-                    テキスト
+                    文字を入力
                   </span>
                   <div
                     id="rich"
@@ -483,10 +501,11 @@ const icons = {
                     aria-multiline="true"
                     aria-labelledby="rich-label"
                     aria-describedby="rich-hint"
+                    data-placeholder="ここに文字を入力"
                     spellcheck="false"
                   ></div>
                   <p id="rich-hint" class="note">
-                    文字を選ぶと、その文字だけにフォント・大きさ・色・太字を適用します。選んでいないときはテキスト全体に適用します。キャンバスでダブルクリック（ダブルタップ）すると、その場で編集できます。
+                    キャンバスの文字をダブルクリック（ダブルタップ）しても、その場で編集できます。文字を選ぶと、その文字だけにフォント・大きさ・色・太字を適用します（選んでいないときは全体）。
                   </p>
                 </div>
                 <div class="field">
@@ -1999,22 +2018,63 @@ const icons = {
     text-shadow: 0.04em 0.06em 0.12em rgb(0 0 0 / 0.55);
   }
 
+  /* 入力欄だと分かるように、ほかの入力欄より少し濃い枠と内側の影をつける */
   #rich {
+    position: relative;
     min-height: 4.5rem;
     max-height: 14rem;
     overflow: auto;
-    padding: var(--space-2);
-    background: #f4f5f7;
+    padding: var(--space-2) var(--space-3);
+    border-color: #b9c0c9;
+    background: #ffffff;
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.08);
+    transition:
+      border-color 0.15s ease-out,
+      box-shadow 0.15s ease-out;
   }
 
   /* 白っぽい文字は暗い背景で見せる */
   #rich.rich--dark {
+    border-color: #2b3036;
     background: #2b3036;
   }
 
-  #rich:focus-visible {
-    outline: 2px solid var(--color-focus);
-    outline-offset: 1px;
+  #rich:hover {
+    border-color: var(--color-text-muted);
+  }
+
+  #rich:focus {
+    border-color: var(--color-focus);
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(26 115 232 / 0.25);
+  }
+
+  /* 文字が無いときの案内（文字の大きさ 0 の行の中に出すので、大きさを戻す） */
+  .rich[data-empty]::before {
+    position: absolute;
+    content: attr(data-placeholder);
+    color: #8a929c;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* 揃えに合わせて、カーソルの位置から案内が始まるようにする */
+  #rich[data-empty]::before {
+    inset: var(--space-2) var(--space-3) auto;
+    text-align: inherit;
+  }
+
+  .stage-text[data-empty]::before {
+    top: 0;
+    left: 0;
+    color: #5b6470;
+  }
+
+  #rich.rich--dark[data-empty]::before {
+    color: #aab2bc;
   }
 
   /* 編集欄から離れている間も、書式を変える文字の範囲を見せる */
@@ -2028,8 +2088,10 @@ const icons = {
     left: 0;
     z-index: 1;
     min-width: 1px;
-    outline: 1px dashed #1a73e8;
-    outline-offset: 2px;
+    /* どんな背景の上でも入力中だと分かるよう、青い枠の外側に白いふちをつける */
+    outline: 2px solid #1a73e8;
+    outline-offset: 3px;
+    box-shadow: 0 0 0 7px rgb(255 255 255 / 0.7);
     caret-color: #1a73e8;
     -webkit-user-select: text;
     user-select: text;
@@ -2191,6 +2253,30 @@ const icons = {
 
   .crop-bar[hidden] {
     display: none;
+  }
+
+  .text-bar {
+    align-items: center;
+    padding-left: var(--space-3);
+  }
+
+  .text-bar__label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 0.875rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .text-bar__label svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    fill: none;
+    stroke: #1a73e8;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .crop-bar .button {
