@@ -4,6 +4,7 @@ import * as exporter from "./exporter";
 import * as filters from "./filters";
 import * as fontpicker from "./fontpicker";
 import * as fonts from "./fonts";
+import * as fontsize from "./fontsize";
 import * as model from "./model";
 import * as outline from "./outline";
 import * as project from "./project";
@@ -70,6 +71,16 @@ type Drag =
 
 const $ = <T extends Element>(root: ParentNode, selector: string) =>
   root.querySelector<T>(selector)!;
+
+/** −/+ のボタンなら、その向き */
+const stepDirection = (target: EventTarget | null) => {
+  const button =
+    target instanceof Element
+      ? target.closest<HTMLElement>("[data-char-step]")
+      : null;
+  if (!button) return null;
+  return button.dataset["charStep"] === "-1" ? -1 : 1;
+};
 
 /** 入力欄（スライダーや選択肢も含む）にフォーカスがあるときは、矢印キーや Delete をそちらに任せる */
 const isEditable = (target: EventTarget | null) =>
@@ -1430,6 +1441,7 @@ export const mount = (root: HTMLElement) => {
     const sizeInput = $<HTMLInputElement>(props, '[data-char="size"]');
     if (document.activeElement !== sizeInput)
       sizeInput.value = String(style.size);
+    syncSizeSlider(style.size);
     $<HTMLInputElement>(props, '[data-char="color"]').value = style.color;
     $<HTMLInputElement>(props, '[data-char="bold"]').checked = styles.every(
       (s) => s.bold,
@@ -1437,6 +1449,13 @@ export const mount = (root: HTMLElement) => {
     const mixed = styles.some((s) => !fonts.sameFont(s.font, style.font));
     fontName.textContent = `${style.font.family}${mixed ? " ほか" : ""}`;
     fontName.style.fontFamily = fonts.cssFamily(style.font);
+  }
+
+  /** スライダーを大きさに合わせる。目盛りの丸めで、動かしている最中のつまみが跳ねないようにする */
+  function syncSizeSlider(size: number) {
+    const slider = $<HTMLInputElement>(props, '[data-char="size-slider"]');
+    if (fontsize.fromSlider(Number(slider.value)) !== size)
+      slider.value = String(fontsize.toSlider(size));
   }
 
   /** この端末で使えないフォントがあれば知らせる */
@@ -1577,7 +1596,11 @@ export const mount = (root: HTMLElement) => {
         clearHighlight();
         return;
       }
-      if (target.closest("[data-char], #font-button, #font-dialog")) {
+      if (
+        target.closest(
+          "[data-char], [data-char-step], #font-button, #font-dialog",
+        )
+      ) {
         showHighlight();
         return;
       }
@@ -1739,6 +1762,11 @@ export const mount = (root: HTMLElement) => {
         )
           return;
         applyChar({ size });
+        syncSizeSlider(size);
+      } else if (char === "size-slider") {
+        const size = fontsize.fromSlider(Number(input.value));
+        $<HTMLInputElement>(props, '[data-char="size"]').value = String(size);
+        applyChar({ size });
       } else if (char === "color") applyChar({ color: input.value });
       else if (char === "bold") applyChar({ bold: input.checked });
       return;
@@ -1812,6 +1840,79 @@ export const mount = (root: HTMLElement) => {
   props.addEventListener("change", () => {
     commit();
     syncPanel();
+  });
+
+  // 文字の大きさの −/+。長押しで続けて変わり、離したところで履歴に積む
+  const sizeInput = () => $<HTMLInputElement>(props, '[data-char="size"]');
+  const stepSize = (direction: 1 | -1) => {
+    const value = sizeInput().value;
+    const current = Number(value);
+    if (value === "" || !Number.isFinite(current)) return;
+    const size = fontsize.step(current, direction);
+    sizeInput().value = String(size);
+    applyChar({ size });
+    syncSizeSlider(size);
+  };
+  let repeatTimer: ReturnType<typeof setTimeout> | undefined;
+  const stopRepeat = () => {
+    if (repeatTimer === undefined) return;
+    clearTimeout(repeatTimer);
+    repeatTimer = undefined;
+    commit();
+    syncPanel();
+  };
+  props.addEventListener("pointerdown", (event) => {
+    const direction = stepDirection(event.target);
+    if (direction === null || event.button !== 0) return;
+    // 編集欄の文字の選択を保つため、ボタンにフォーカスを移さない
+    event.preventDefault();
+    stepSize(direction);
+    const repeat = (delay: number) => {
+      repeatTimer = setTimeout(() => {
+        stepSize(direction);
+        repeat(70);
+      }, delay);
+    };
+    repeat(400);
+  });
+  for (const type of ["pointerup", "pointercancel"] as const)
+    document.addEventListener(type, stopRepeat, { signal });
+  props.addEventListener("click", (event) => {
+    // キーボード（Enter・Space）で押したとき。ポインターは pointerdown で済んでいる
+    const direction = stepDirection(event.target);
+    if (direction === null || event.detail !== 0) return;
+    stepSize(direction);
+    commit();
+    syncPanel();
+  });
+  props.addEventListener("contextmenu", (event) => {
+    // スマホで長押ししたときにメニューを出さない
+    if (stepDirection(event.target) !== null) event.preventDefault();
+  });
+
+  // 大きさの欄：Shift+↑↓ で 10 ずつ。フォーカスしたら全体を選んで、そのまま打ち直せるようにする
+  props.addEventListener("keydown", (event) => {
+    const input = event.target;
+    if (
+      !(input instanceof HTMLInputElement) ||
+      input.dataset["char"] !== "size" ||
+      !event.shiftKey ||
+      (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+    )
+      return;
+    event.preventDefault();
+    const current = Number(input.value);
+    if (!Number.isFinite(current)) return;
+    input.value = String(
+      fontsize.clamp(current + (event.key === "ArrowUp" ? 10 : -10)),
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  props.addEventListener("focusin", (event) => {
+    const input = event.target;
+    if (input instanceof HTMLInputElement && input.dataset["char"] === "size")
+      requestAnimationFrame(() => input.select());
   });
 
   props.addEventListener("click", (event) => {
