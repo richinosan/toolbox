@@ -32,7 +32,7 @@ const icons = {
   description={tool.description}
   spec={{
     overview:
-      "画像の読み込み、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と JavaScript）で行います。テキストの既定のフォントは LINE Seed JP で、Web フォント（Fontsource）・端末のフォント・フォントファイルも使えます。保存するときは、フォントの無い端末でも同じ見た目で表示できるよう、文字の形（パス）も作品ファイルに入れます。",
+      "画像の読み込み、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、背面のフィルター（下に重なる絵をレイヤーの形でぼかす・色を変える）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と JavaScript）で行います。テキストの既定のフォントは LINE Seed JP で、Web フォント（Fontsource）・端末のフォント・フォントファイルも使えます。保存するときは、フォントの無い端末でも同じ見た目で表示できるよう、文字の形（パス）も作品ファイルに入れます。",
     network:
       "開いた画像や入力した文字がサーバーへ送信されることはありません。Web フォントを選んだときだけ、そのフォントのファイル（使う文字の範囲の分だけ）を jsDelivr（cdn.jsdelivr.net）の Fontsource から読み込み、フォントの名前で探したときだけ、フォントの一覧を Fontsource（api.fontsource.org）から読み込みます。PSD の書き出しと文字のパス化に使うライブラリは、使うときに同じサイトから読み込みます。",
     storage:
@@ -62,7 +62,7 @@ const icons = {
     {
       target: "#props-panel",
       title: "設定",
-      body: "選んだレイヤーの文字・フォント・色・大きさと、カラーフィルターやガウスぼかしを変えます。テキストは文字を選ぶと、その文字だけの書式を変えられます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
+      body: "選んだレイヤーの文字・フォント・色・大きさと、カラーフィルターやガウスぼかし、背面のフィルター（すりガラスなど）を変えます。テキストは文字を選ぶと、その文字だけの書式を変えられます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
     },
     {
       target: "#file-tools",
@@ -860,6 +860,85 @@ const icons = {
                     data-action="reset-filters"
                   >
                     フィルターをリセット
+                  </button>
+                </div>
+              </details>
+
+              <details class="group">
+                <summary class="group__title">背面のフィルター</summary>
+                <div class="fields">
+                  <p class="note">
+                    このレイヤーの形の範囲だけ、下に重なっている絵をぼかしたり色を変えたりします（すりガラスなど）。
+                  </p>
+                  {[
+                    ["blur", "ぼかし", 0, 100, "px", "0.5"],
+                    ["brightness", "明るさ", -100, 100, "", "1"],
+                    ["contrast", "コントラスト", -100, 100, "", "1"],
+                    ["saturation", "彩度", -100, 100, "", "1"],
+                    ["hue", "色相", -180, 180, "°", "1"],
+                  ].map(([key, label, min, max, unit, step]) => (
+                    <div class="range">
+                      <label class="field__label" for={`prop-backdrop-${key}`}>
+                        {label}
+                      </label>
+                      <output for={`prop-backdrop-${key}`} />
+                      <input
+                        id={`prop-backdrop-${key}`}
+                        class="range__input"
+                        type="range"
+                        data-prop={`backdrop.${key}`}
+                        data-unit={unit}
+                        min={min}
+                        max={max}
+                        step={step}
+                      />
+                    </div>
+                  ))}
+                  <div class="range">
+                    <label class="field__label" for="prop-backdrop-tintAmount">
+                      色かぶせ
+                    </label>
+                    <output for="prop-backdrop-tintAmount"></output>
+                    <input
+                      id="prop-backdrop-tintAmount"
+                      class="range__input range__input--with-swatch"
+                      type="range"
+                      data-prop="backdrop.tintAmount"
+                      data-unit="%"
+                      min="0"
+                      max="100"
+                      step="1"
+                    />
+                    <input
+                      class="swatch swatch--small"
+                      type="color"
+                      data-prop="backdrop.tint"
+                      aria-label="背面の色かぶせの色"
+                    />
+                  </div>
+                  <fieldset class="chips">
+                    <legend class="field__label">カラーフィルター</legend>
+                    <div class="chips__options">
+                      {model.filterPresets.map(([value, label]) => (
+                        <label class="chip">
+                          <input
+                            class="chip__input"
+                            type="radio"
+                            name="backdrop-preset"
+                            value={value}
+                            data-prop="backdrop.preset"
+                          />
+                          <span class="chip__label">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    data-action="reset-backdrop"
+                  >
+                    背面のフィルターをリセット
                   </button>
                 </div>
               </details>
