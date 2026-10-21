@@ -510,33 +510,74 @@ const icons = {
                   </button>
                 </div>
                 <p id="font-missing" class="note note--warn" hidden></p>
-                <div class="pair">
-                  <label class="field">
-                    <span class="field__label">大きさ（px）</span>
+                <div class="size">
+                  <label class="field__label" for="char-size">
+                    大きさ（px）
+                  </label>
+                  <div class="stepper">
+                    <button
+                      class="stepper__button"
+                      type="button"
+                      data-char-step="-1"
+                      aria-label="小さくする"
+                      aria-controls="char-size"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 12h12"></path>
+                      </svg>
+                    </button>
                     <input
-                      class="input"
+                      id="char-size"
+                      class="input stepper__input"
                       type="number"
                       data-char="size"
                       min="1"
                       max="2000"
                       step="1"
-                      inputmode="decimal"
+                      inputmode="numeric"
+                      enterkeyhint="done"
+                      aria-describedby="char-size-hint"
                     />
-                  </label>
-                  <div class="field">
-                    <span class="field__label">色・太さ</span>
-                    <div class="inline">
-                      <input
-                        class="swatch"
-                        type="color"
-                        data-char="color"
-                        aria-label="文字の色"
-                      />
-                      <label class="check">
-                        <input type="checkbox" data-char="bold" />
-                        <span>太字</span>
-                      </label>
-                    </div>
+                    <button
+                      class="stepper__button"
+                      type="button"
+                      data-char-step="1"
+                      aria-label="大きくする"
+                      aria-controls="char-size"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M6 12h12M12 6v12"></path>
+                      </svg>
+                    </button>
+                  </div>
+                  <input
+                    class="range__input size__slider"
+                    type="range"
+                    data-char="size-slider"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    aria-label="大きさ（スライダー）"
+                    aria-describedby="char-size-hint"
+                  />
+                  <p id="char-size-hint" class="note size__hint">
+                    −・＋は長押しで続けて変わります。欄では ↑↓ で 1、Shift+↑↓ で
+                    10 ずつ変わります。
+                  </p>
+                </div>
+                <div class="field">
+                  <span class="field__label">色・太さ</span>
+                  <div class="inline">
+                    <input
+                      class="swatch"
+                      type="color"
+                      data-char="color"
+                      aria-label="文字の色"
+                    />
+                    <label class="check">
+                      <input type="checkbox" data-char="bold" />
+                      <span>太字</span>
+                    </label>
                   </div>
                 </div>
                 <fieldset class="seg">
@@ -1596,6 +1637,89 @@ const icons = {
 
   .range__input--with-swatch {
     grid-column: 1;
+  }
+
+  .size {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .size__slider,
+  .size__hint {
+    grid-column: 1 / -1;
+  }
+
+  .size__hint {
+    margin-top: calc(var(--space-1) * -1);
+  }
+
+  .stepper {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+  }
+
+  .stepper:focus-within {
+    border-color: var(--color-accent);
+  }
+
+  .stepper__input {
+    width: 4.5rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  .stepper__input::-webkit-inner-spin-button,
+  .stepper__input::-webkit-outer-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+  }
+
+  .stepper__input:focus {
+    outline: none;
+  }
+
+  .stepper__button {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 2.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: background-color 120ms ease-out;
+  }
+
+  .stepper__button:hover {
+    background: var(--color-surface);
+  }
+
+  .stepper__button:active {
+    background: var(--color-border);
+  }
+
+  .stepper__button svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
   }
 
   .group {
