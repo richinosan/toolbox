@@ -142,17 +142,33 @@ export const renderLayer = (
   return { canvas, pad };
 };
 
-/** 描画結果に影響する値だけを並べたキー（位置・不透明度・名前は含まない） */
+/** 描画結果に影響する値だけを並べたキー（位置・不透明度・名前・背面のフィルターは含まない） */
 const cacheKey = (layer: model.Layer, fontVersion: number) => {
-  const { x: _x, y: _y, opacity: _o, visible: _v, name: _n, ...rest } = layer;
+  const {
+    x: _x,
+    y: _y,
+    opacity: _o,
+    visible: _v,
+    name: _n,
+    backdrop: _b,
+    ...rest
+  } = layer;
   return (
     JSON.stringify(rest) +
     (layer.type === "text" ? `#${fontVersion}#${fonts.getVersion()}` : "")
   );
 };
 
+/** 背面のフィルターを掛けた絵（レイヤーの形で切り抜き済み）。x, y はドキュメントの px */
+export type Backdrop = { canvas: HTMLCanvasElement; x: number; y: number };
+
 export class LayerCache {
-  #entries = new Map<string, { key: string; rendered: Rendered }>();
+  #entries = new Map<
+    string,
+    { key: string; rendered: Rendered; revision: number }
+  >();
+  #backdrops = new Map<string, { key: string; backdrop: Backdrop | null }>();
+  #revision = 0;
   /** フォントの読み込みが終わったら増やして、テキストを描き直す */
   fontVersion = 0;
 
@@ -161,8 +177,61 @@ export class LayerCache {
     const entry = this.#entries.get(layer.id);
     if (entry && entry.key === key) return entry.rendered;
     const rendered = renderLayer(layer, assets);
-    this.#entries.set(layer.id, { key, rendered });
+    this.#entries.set(layer.id, { key, rendered, revision: ++this.#revision });
     return rendered;
+  }
+
+  /** 描き直すたびに変わる番号（下に重なるレイヤーが変わったかを見分ける） */
+  revision(id: string) {
+    return this.#entries.get(id)?.revision ?? 0;
+  }
+
+  /** index 番目のレイヤーの背面のフィルター。下のレイヤーも設定も変わっていなければ作り直さない */
+  backdrop(
+    doc: model.Doc,
+    assets: model.Assets,
+    index: number,
+    hidden: string | null,
+    background: string | null,
+  ) {
+    const layer = doc.layers[index]!;
+    const rendered = this.get(layer, assets);
+    const parts: unknown[] = [doc.width, doc.height, background, hidden];
+    for (const below of doc.layers.slice(0, index)) {
+      if (!below.visible || below.opacity <= 0) continue;
+      const shown = below.id !== hidden;
+      // 見えている下のレイヤーは、ここで描画を最新にしておく（番号が描画結果と合うように）
+      if (shown) this.get(below, assets);
+      parts.push(
+        below.id,
+        shown ? this.revision(below.id) : 0,
+        below.x,
+        below.y,
+        below.opacity,
+        JSON.stringify(below.backdrop),
+      );
+    }
+    parts.push(
+      layer.id,
+      this.revision(layer.id),
+      layer.x,
+      layer.y,
+      JSON.stringify(layer.backdrop),
+    );
+    const key = JSON.stringify(parts);
+    const entry = this.#backdrops.get(layer.id);
+    if (entry && entry.key === key) return entry.backdrop;
+    const backdrop = renderBackdrop(
+      doc,
+      assets,
+      this,
+      index,
+      rendered,
+      hidden,
+      background,
+    );
+    this.#backdrops.set(layer.id, { key, backdrop });
+    return backdrop;
   }
 
   /** ドキュメントに無くなったレイヤーのキャッシュを捨てる */
@@ -170,12 +239,128 @@ export class LayerCache {
     const ids = new Set(doc.layers.map((layer) => layer.id));
     for (const id of this.#entries.keys())
       if (!ids.has(id)) this.#entries.delete(id);
+    for (const id of this.#backdrops.keys())
+      if (!ids.has(id)) this.#backdrops.delete(id);
   }
 
   clear() {
     this.#entries.clear();
+    this.#backdrops.clear();
   }
 }
+
+/** 背面のフィルターの範囲を、レイヤーの形で切り抜く（図形は塗りの有無によらず形の内側） */
+const drawBackdropMask = (
+  context: CanvasRenderingContext2D,
+  layer: model.Layer,
+  rendered: Rendered,
+  ox: number,
+  oy: number,
+) => {
+  if (layer.type === "rect" || layer.type === "ellipse") {
+    context.beginPath();
+    if (layer.type === "ellipse") {
+      context.ellipse(
+        ox + layer.width / 2,
+        oy + layer.height / 2,
+        layer.width / 2,
+        layer.height / 2,
+        0,
+        0,
+        Math.PI * 2,
+      );
+    } else {
+      const radius = Math.min(layer.radius, layer.width / 2, layer.height / 2);
+      context.roundRect(ox, oy, layer.width, layer.height, Math.max(0, radius));
+    }
+    context.fill();
+  } else {
+    // 画像・テキスト・パスは、描いた絵の不透明な部分
+    context.drawImage(rendered.canvas, ox - rendered.pad, oy - rendered.pad);
+  }
+};
+
+/**
+ * 背面のフィルターを作る。レイヤーの範囲（ぼかしで混ざる周りも含めて）の下の絵を描き、
+ * フィルターを掛けて、レイヤーの形で切り抜く。ドキュメントの外は、端の色を延長して扱う。
+ */
+const renderBackdrop = (
+  doc: model.Doc,
+  assets: model.Assets,
+  cache: LayerCache,
+  index: number,
+  rendered: Rendered,
+  hidden: string | null,
+  background: string | null,
+): Backdrop | null => {
+  const layer = doc.layers[index]!;
+  const left = Math.max(0, Math.floor(layer.x - rendered.pad));
+  const top = Math.max(0, Math.floor(layer.y - rendered.pad));
+  const right = Math.min(
+    doc.width,
+    Math.ceil(layer.x - rendered.pad + rendered.canvas.width),
+  );
+  const bottom = Math.min(
+    doc.height,
+    Math.ceil(layer.y - rendered.pad + rendered.canvas.height),
+  );
+  if (right <= left || bottom <= top) return null;
+  const spread = filters.blurPadding(layer.backdrop.blur);
+  const sx = Math.max(0, left - spread);
+  const sy = Math.max(0, top - spread);
+  const sample = document.createElement("canvas");
+  sample.width = Math.min(doc.width, right + spread) - sx;
+  sample.height = Math.min(doc.height, bottom + spread) - sy;
+  const sampleContext = sample.getContext("2d", { willReadFrequently: true })!;
+  sampleContext.imageSmoothingQuality = "high";
+  if (background) {
+    sampleContext.fillStyle = background;
+    sampleContext.fillRect(0, 0, sample.width, sample.height);
+  }
+  sampleContext.translate(-sx, -sy);
+  drawStack(sampleContext, doc, assets, cache, index, hidden, background);
+  const image = sampleContext.getImageData(0, 0, sample.width, sample.height);
+  filters.applyColor(image.data, filters.colorMatrix(layer.backdrop));
+  filters.applyBlur(
+    image.data,
+    sample.width,
+    sample.height,
+    layer.backdrop.blur,
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = right - left;
+  canvas.height = bottom - top;
+  const context = canvas.getContext("2d")!;
+  context.putImageData(image, sx - left, sy - top);
+  context.globalCompositeOperation = "destination-in";
+  drawBackdropMask(context, layer, rendered, layer.x - left, layer.y - top);
+  return { canvas, x: left, y: top };
+};
+
+/** 下から upto 枚目の手前までのレイヤーを重ねて描く */
+const drawStack = (
+  context: CanvasRenderingContext2D,
+  doc: model.Doc,
+  assets: model.Assets,
+  cache: LayerCache,
+  upto: number,
+  hidden: string | null,
+  background: string | null,
+) => {
+  doc.layers.slice(0, upto).forEach((layer, index) => {
+    if (!layer.visible || layer.opacity <= 0) return;
+    context.globalAlpha = layer.opacity / 100;
+    // 背面のフィルターはレイヤーの背景として描くので、不透明度も一緒に掛かる（CSS と同じ）
+    if (model.hasFilters(layer.backdrop)) {
+      const backdrop = cache.backdrop(doc, assets, index, hidden, background);
+      if (backdrop) context.drawImage(backdrop.canvas, backdrop.x, backdrop.y);
+    }
+    if (layer.id === hidden) return;
+    const { canvas, pad } = cache.get(layer, assets);
+    context.drawImage(canvas, layer.x - pad, layer.y - pad);
+  });
+  context.globalAlpha = 1;
+};
 
 /** ドキュメントを context に重ねて描く。context の変換はドキュメント座標に合わせておく */
 export const drawLayers = (
@@ -185,15 +370,10 @@ export const drawLayers = (
   cache: LayerCache,
   /** キャンバス上で編集中のテキスト（編集欄の文字を見せるので描かない） */
   hidden: string | null = null,
-) => {
-  for (const layer of doc.layers) {
-    if (!layer.visible || layer.opacity <= 0 || layer.id === hidden) continue;
-    const { canvas, pad } = cache.get(layer, assets);
-    context.globalAlpha = layer.opacity / 100;
-    context.drawImage(canvas, layer.x - pad, layer.y - pad);
-  }
-  context.globalAlpha = 1;
-};
+  /** 背面のフィルターが下の絵として使う背景（context にはこの色で塗ってあるものとする） */
+  background: string | null = doc.background,
+) =>
+  drawStack(context, doc, assets, cache, doc.layers.length, hidden, background);
 
 /** 背景込みで 1 枚の画像にする（書き出し用） */
 export const flatten = (
@@ -211,6 +391,6 @@ export const flatten = (
     context.fillStyle = background;
     context.fillRect(0, 0, doc.width, doc.height);
   }
-  drawLayers(context, doc, assets, cache);
+  drawLayers(context, doc, assets, cache, null, background);
   return canvas;
 };

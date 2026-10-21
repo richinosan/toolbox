@@ -190,6 +190,7 @@ const readLayer = (
     width: int(value["width"], 100, 1, model.MAX_SIDE * 4),
     height: int(value["height"], 100, 1, model.MAX_SIDE * 4),
     filters: readFilters(value["filters"]),
+    backdrop: readFilters(value["backdrop"]),
   };
   switch (value["type"]) {
     case "image": {
