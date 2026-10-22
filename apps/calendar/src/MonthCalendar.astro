@@ -103,11 +103,56 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
     </table>
 
     <div id="month-picker" class="month__picker" hidden>
-      {months.map((value) => (
-        <button class="month__month" type="button" data-month={value}>
-          {value}月
+      <!-- 年は見出しではなく、ここで年の両側の ‹ › を押して変える -->
+      <div class="month__year">
+        <button
+          id="picker-prev"
+          class="month__button"
+          type="button"
+          aria-label="前の年"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m15 18-6-6 6-6"></path>
+          </svg>
         </button>
-      ))}
+        <span id="picker-year" class="month__year-label" aria-live="polite">
+          &nbsp;
+        </span>
+        <button
+          id="picker-next"
+          class="month__button"
+          type="button"
+          aria-label="次の年"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="m9 18 6-6-6-6"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="month__months">
+        {months.map((value) => (
+          <button class="month__month" type="button" data-month={value}>
+            <span>{value}月</span>
+            <span class="month__month-note" />
+          </button>
+        ))}
+      </div>
     </div>
   </div>
 
@@ -146,6 +191,9 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
     )!;
     const days = root.querySelector<HTMLElement>("#month-days")!;
     const picker = root.querySelector<HTMLElement>("#month-picker")!;
+    const pickerYearLabel = root.querySelector<HTMLElement>("#picker-year")!;
+    const pickerPrev = root.querySelector<HTMLButtonElement>("#picker-prev")!;
+    const pickerNext = root.querySelector<HTMLButtonElement>("#picker-next")!;
     const monthButtons = [
       ...picker.querySelectorAll<HTMLButtonElement>(".month__month"),
     ];
@@ -164,24 +212,29 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
       }
     };
     showSelectedMonth();
-    // 年と月を選ぶ画面を開いているときは、前後のボタンで 1 年ずつ動かす
+    // 年と月を選ぶ画面では、年の両側のボタンで 1 年ずつ動かす
     let picking = false;
     let pickerYear = year;
 
     const renderPicker = (animate = false) => {
-      title.textContent = `${pickerYear}年`;
+      pickerYearLabel.textContent = `${pickerYear}年`;
       for (const button of monthButtons) {
         const value = Number(button.dataset.month);
-        button.setAttribute(
-          "aria-pressed",
-          String(pickerYear === year && value === month),
-        );
-        if (pickerYear === now.year && value === now.month)
-          button.setAttribute("aria-current", "date");
+        const shown = pickerYear === year && value === month;
+        const current = pickerYear === now.year && value === now.month;
+        button.setAttribute("aria-pressed", String(shown));
+        if (current) button.setAttribute("aria-current", "date");
         else button.removeAttribute("aria-current");
+        // 枠や塗りだけでは意味が伝わらないので、文字でも添える
+        button.querySelector(".month__month-note")!.textContent = [
+          current && "今月",
+          shown && "表示中",
+        ]
+          .filter(Boolean)
+          .join("・");
       }
-      prev.disabled = pickerYear <= 1;
-      next.disabled = pickerYear >= 9999;
+      pickerPrev.disabled = pickerYear <= 1;
+      pickerNext.disabled = pickerYear >= 9999;
       if (animate) motion.play(picker, "pop");
     };
 
@@ -191,8 +244,9 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
       picker.hidden = !value;
       days.classList.toggle("month__grid--hidden", value);
       titleButton.setAttribute("aria-expanded", String(value));
-      prev.setAttribute("aria-label", value ? "前の年" : "前の月");
-      next.setAttribute("aria-label", value ? "次の年" : "次の月");
+      // 月の送りボタンは年の選択と紛らわしいので、選ぶ画面では隠す
+      prev.hidden = value;
+      next.hidden = value;
     };
 
     const render = (animate = false) => {
@@ -268,11 +322,6 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
     };
 
     const move = (delta: number) => {
-      if (picking) {
-        pickerYear = Math.min(9999, Math.max(1, pickerYear + delta));
-        renderPicker(true);
-        return;
-      }
       const index = year * 12 + (month - 1) + delta;
       year = Math.floor(index / 12);
       month = (index % 12) + 1;
@@ -280,6 +329,12 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
     };
     prev.addEventListener("click", () => move(-1));
     next.addEventListener("click", () => move(1));
+    const moveYear = (delta: number) => {
+      pickerYear = Math.min(9999, Math.max(1, pickerYear + delta));
+      renderPicker(true);
+    };
+    pickerPrev.addEventListener("click", () => moveYear(-1));
+    pickerNext.addEventListener("click", () => moveYear(1));
     todayButton.addEventListener("click", () => {
       const changed = picking || year !== now.year || month !== now.month;
       year = now.year;
@@ -407,6 +462,27 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
 
   .month__picker {
     display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  .month__year {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+  }
+
+  .month__year-label {
+    min-width: 5em;
+    font-size: 1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+
+  .month__months {
+    display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: repeat(4, minmax(0, 1fr));
     gap: var(--space-2);
@@ -417,6 +493,9 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
   }
 
   .month__month {
+    display: grid;
+    place-content: center;
+    gap: 2px;
     border: 1px solid transparent;
     border-radius: 8px;
     background: transparent;
@@ -434,15 +513,25 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
     background: var(--color-bg);
   }
 
+  /* 今月は枠、表示中の月は塗りで分け、下に「今月」「表示中」と書き添える */
   .month__month[aria-current="date"] {
     border-color: var(--color-accent);
-    font-weight: 700;
   }
 
   .month__month[aria-pressed="true"] {
-    border-color: var(--color-accent);
     background: var(--color-accent-soft);
     font-weight: 700;
+  }
+
+  .month__month-note {
+    color: var(--color-accent);
+    font-size: 0.6875rem;
+    font-weight: 400;
+    line-height: 1.2;
+  }
+
+  .month__month-note:empty {
+    display: none;
   }
 
   .month__nav {
@@ -463,6 +552,10 @@ const months = Array.from({ length: 12 }, (_, index) => index + 1);
     font: inherit;
     font-size: 0.875rem;
     cursor: pointer;
+  }
+
+  .month__button[hidden] {
+    display: none;
   }
 
   .month__button--text {
