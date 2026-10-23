@@ -47,6 +47,8 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* スマホで画面を下に引っ張ったときの再読み込み（引っ張り更新）をさせない */
+  overscroll-behavior-y: none;
 }
 
 body {
