@@ -1,5 +1,6 @@
 // IMAGE のエディター本体。ページの要素に操作を結び付け、ドキュメントの状態・履歴・描画を管理する。
 import * as motion from "#ui/motion.ts";
+import * as draft from "./draft";
 import * as exporter from "./exporter";
 import * as filters from "./filters";
 import * as fontpicker from "./fontpicker";
@@ -438,6 +439,23 @@ export const mount = (root: HTMLElement) => {
     );
   };
 
+  // ---- 一時保存（誤って再読み込みしても消えないように、IndexedDB に残す） ----
+  let draftTimer: ReturnType<typeof setTimeout> | undefined;
+  const saveDraft = () => {
+    clearTimeout(draftTimer);
+    if (!doc) return;
+    const used = new Set(
+      doc.layers.flatMap((layer) =>
+        layer.type === "image" ? [layer.asset] : [],
+      ),
+    );
+    void draft.save(project.toJson(doc), isDirty(), fileHandle, assets, used);
+  };
+  const scheduleDraft = () => {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(saveDraft, 300);
+  };
+
   // ---- 履歴 ----
   /** フレームのレイアウトを計算し直す（中身の位置と、中身に合わせるフレームの大きさ） */
   const relayout = () => {
@@ -468,6 +486,7 @@ export const mount = (root: HTMLElement) => {
     historyIndex = history.length - 1;
     updateHistoryButtons();
     renderLayerList();
+    scheduleDraft();
   };
 
   const restore = (index: number) => {
@@ -482,6 +501,7 @@ export const mount = (root: HTMLElement) => {
     cache.prune(doc);
     updateHistoryButtons();
     refreshAll();
+    scheduleDraft();
   };
 
   const undo = () => {
@@ -930,6 +950,25 @@ export const mount = (root: HTMLElement) => {
     guides = { xs: [], ys: [] };
   };
 
+  // 画面の大きさが変わったら（スマホのキーボードやアドレスバーの出し入れなど）全体が収まるよう合わせ直す。
+  // 指で操作している間は、つかんだものと指がずれて勝手に拡大・縮小されたように見えるので、離すまで待つ
+  let refitPending = false;
+  const refit = () => {
+    if (!camera.fit) return;
+    if (pointers.size > 0) {
+      refitPending = true;
+      return;
+    }
+    fitCamera();
+  };
+  const refitAfterRelease = () => {
+    if (pointers.size > 0 || !refitPending) return;
+    refitPending = false;
+    if (!camera.fit) return;
+    fitCamera();
+    requestDraw();
+  };
+
   const startPinch = () => {
     const [a, b] = [...pointers.values()];
     if (!a || !b) return;
@@ -945,6 +984,22 @@ export const mount = (root: HTMLElement) => {
     };
   };
 
+  /** 指が離れたことを受け取れなかったときに、その指の操作を終わらせる */
+  const dropPointer = (id: number) => {
+    pointers.delete(id);
+    refitAfterRelease();
+    if (!drag || pointers.size > 0) return;
+    const finished = drag;
+    drag = null;
+    guides = { xs: [], ys: [] };
+    // 動かしたところまでは確定する
+    if (finished.kind === "move" || finished.kind === "resize") {
+      commit();
+      syncPanel();
+    }
+    requestDraw();
+  };
+
   stage.addEventListener("pointerdown", (event) => {
     if (!doc) return;
     // キャンバス上の編集欄の中では、文字の選択をブラウザに任せる
@@ -955,6 +1010,10 @@ export const mount = (root: HTMLElement) => {
       return;
     if (event.button !== 0 && event.pointerType === "mouse") return;
     finishEditing();
+    // 離したことを受け取れなかった指が残っていると、1 本指のドラッグが 2 本指のピンチ（拡大・縮小）と
+    // 見なされてしまう。もう押さえていない指（ポインターを捕まえていないもの）は消しておく
+    for (const id of pointers.keys())
+      if (!stage.hasPointerCapture(id)) dropPointer(id);
     stage.setPointerCapture(event.pointerId);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 2) {
@@ -1124,6 +1183,7 @@ export const mount = (root: HTMLElement) => {
 
   const endPointer = (event: PointerEvent) => {
     pointers.delete(event.pointerId);
+    refitAfterRelease();
     if (!drag) return;
     if (drag.kind === "pinch") {
       // 指が 1 本残っても、離すまでは何もしない
@@ -1157,6 +1217,10 @@ export const mount = (root: HTMLElement) => {
     requestDraw();
   };
   stage.addEventListener("pointerup", endPointer);
+  // pointerup も pointercancel も届かずにポインターを放したとき（ブラウザの操作に取られたときなど）
+  stage.addEventListener("lostpointercapture", (event) => {
+    if (pointers.has(event.pointerId)) dropPointer(event.pointerId);
+  });
   stage.addEventListener("pointercancel", (event) => {
     if (drag && (drag.kind === "move" || drag.kind === "resize"))
       cancelLayerDrag();
@@ -1197,7 +1261,7 @@ export const mount = (root: HTMLElement) => {
   );
 
   const resizeObserver = new ResizeObserver(() => {
-    if (camera.fit) fitCamera();
+    refit();
     requestDraw();
   });
   resizeObserver.observe(stage);
@@ -2502,6 +2566,7 @@ export const mount = (root: HTMLElement) => {
     updateHistoryButtons();
     fitCamera();
     refreshAll();
+    scheduleDraft();
     // テキストのフォントを読み込んでから描き直す
     for (const layer of next.layers)
       if (layer.type === "text") textChanged(layer);
@@ -2590,6 +2655,7 @@ export const mount = (root: HTMLElement) => {
       for (const [id, asset] of loaded.assets) assets.set(id, asset);
       startDoc(loaded.doc, handle);
       savedIndex = historyIndex;
+      scheduleDraft();
       notify(`「${loaded.doc.name}」を開きました。`);
     } catch (error) {
       notify(
@@ -2667,6 +2733,7 @@ export const mount = (root: HTMLElement) => {
       if (result === undefined) return;
       fileHandle = result;
       savedIndex = index;
+      scheduleDraft();
       notify(
         `${
           result
@@ -3163,6 +3230,38 @@ export const mount = (root: HTMLElement) => {
     { signal },
   );
 
+  // ページを離れる直前に、入力途中の文字も含めて一時保存する
+  window.addEventListener(
+    "pagehide",
+    () => {
+      if (!doc) return;
+      clearTimeout(commitTimer);
+      commit();
+      saveDraft();
+    },
+    { signal },
+  );
+
+  /** 再読み込みの前に編集していた作品を開き直す */
+  const restoreDraft = async () => {
+    const saved = await draft.load();
+    // 読み込みを待つ間に、別の作品を開いていたら上書きしない
+    if (!saved || doc || signal.aborted) return;
+    try {
+      const loaded = await project.fromJson(saved.doc, saved.assets);
+      if (doc || signal.aborted) return;
+      for (const [id, asset] of loaded.assets) assets.set(id, asset);
+      startDoc(loaded.doc, saved.handle as project.FileHandle | null);
+      // 作品ファイルに保存していなかった変更は、保存していないものとして扱う
+      if (saved.dirty) savedIndex = -1;
+      notify("再読み込みする前の編集内容を復元しました。");
+    } catch {
+      // 復元できなければ、空の状態から始める
+    }
+  };
+  void restoreDraft();
+  void draft.purge();
+
   // ---- 保存していない変更の確認 ----
   window.addEventListener(
     "beforeunload",
@@ -3184,7 +3283,7 @@ export const mount = (root: HTMLElement) => {
   window.addEventListener(
     "resize",
     () => {
-      if (camera.fit) fitCamera();
+      refit();
       requestDraw();
     },
     { signal },

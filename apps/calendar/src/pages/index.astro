@@ -15,7 +15,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       "入力された日付の解釈と曜日・祝日・Unix time・起算日からの残り日数の計算、複数行の整形は、すべてブラウザ内（JavaScript）で行います。祝日は外部のデータを使わず「国民の祝日に関する法律」に沿って計算します（振替休日・国民の休日を含む。春分の日・秋分の日は近似式による計算のため、先の年は推計です。2151 年以降は計算できないので「不明」と表示します）。日付のみの入力は JST (UTC+09:00) の 00:00:00 として扱います。",
     network: "なし（入力した日付がサーバーへ送信されることはありません）",
     storage:
-      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。localStorage には、選んだ入力モード（「1件」か「複数行」）と、複数行で残り日数を付けるかどうかだけを保存します。入力した日付と起算日は保存しません。Cookie は使いません。",
+      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。localStorage には、選んだ入力モード（「1件」か「複数行」）と、複数行で残り日数を付けるかどうかだけを保存します。入力した日付・起算日・複数行の入力は、誤って再読み込みしても消えないよう sessionStorage に一時保存します（タブを閉じると消えます）。Cookie は使いません。",
     libraries: ["luxon（日付の解釈と計算）"],
   }}
   tour={[
@@ -331,6 +331,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
 
 <script>
   import * as luxon from "luxon";
+  import * as draft from "#ui/draft.ts";
   import * as motion from "#ui/motion.ts";
   import * as date from "../lib/date";
   import * as holiday from "../lib/holiday";
@@ -419,6 +420,17 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
     };
 
     let initialised = false;
+    // 入力した日付と起算日、複数行の入力は sessionStorage に一時保存し、誤って再読み込みしても消えないようにする
+    const draftKey = "calendar";
+    const saveDraft = () => {
+      // 初期表示の計算では保存しない（復元する前の空の値で上書きしないように）
+      if (!initialised) return;
+      draft.write(draftKey, {
+        date: text.value,
+        start: startText.value,
+        multi: multiInput.value,
+      });
+    };
     const hint = `日付のみの場合は ${date.TIME_ZONE_LABEL} の 00:00:00 として計算します。`;
 
     const render = () => {
@@ -474,6 +486,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       startNote.textContent = startValid
         ? `上の日付を期限として、${startInfo ? "" : "今日 "}${formatDate(start)} から数えています。`
         : "起算日を日付として解釈できません。";
+      saveDraft();
     };
 
     text.addEventListener("input", render);
@@ -640,6 +653,7 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       } else {
         multiNote.textContent = `1 行に 1 つずつ日付を入力してください。日付のみの入力は ${date.TIME_ZONE_LABEL} として扱います。`;
       }
+      saveDraft();
     };
     multiInput.addEventListener("input", renderMulti);
     copyMulti.addEventListener("click", async () => {
@@ -667,6 +681,15 @@ const tool = shared.tools.find((t) => t.id === "calendar")!;
       renderMulti();
     });
 
+    const saved = draft.read(draftKey);
+    if (draft.isObject(saved)) {
+      if (typeof saved["date"] === "string") text.value = saved["date"];
+      if (typeof saved["start"] === "string") startText.value = saved["start"];
+      if (typeof saved["multi"] === "string") {
+        multiInput.value = saved["multi"];
+        renderMulti();
+      }
+    }
     const today = luxon.DateTime.now().setZone(date.TIME_ZONE).toISODate();
     if (!text.value) text.value = today ?? "";
     if (!startText.value) startText.value = today ?? "";

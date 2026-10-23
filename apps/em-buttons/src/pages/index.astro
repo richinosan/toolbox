@@ -19,7 +19,7 @@ const initial = button.defaultSettings;
     network:
       "なし（入力したラベルや URL がサーバーへ送信されることはありません）",
     storage:
-      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。localStorage・Cookie は使いません。入力したラベルや URL、色の設定は保存しないので、ページを閉じると消えます。",
+      "オフラインでも開けるよう、ページ・スクリプト・フォントをブラウザのキャッシュ（Cache Storage）に保存します。入力したラベルや URL、見た目の設定、コードの形式、プレビューの背景は、誤って再読み込みしても消えないよう sessionStorage に一時保存します（タブを閉じると消えます）。localStorage・Cookie は使いません。",
     libraries: [],
   }}
   tour={[
@@ -319,8 +319,16 @@ const initial = button.defaultSettings;
 </Layout>
 
 <script>
+  import * as draft from "#ui/draft.ts";
   import * as motion from "#ui/motion.ts";
   import * as button from "../lib/button";
+
+  const checkRadio = (scope: HTMLFormElement, name: string, value: string) => {
+    for (const radio of scope.querySelectorAll<HTMLInputElement>(
+      `[name="${name}"]`,
+    ))
+      radio.checked = radio.value === value;
+  };
 
   // ページ遷移（ClientRouter）でもスクリプトは再実行されないので、表示のたびに初期化する
   const init = () => {
@@ -354,8 +362,33 @@ const initial = button.defaultSettings;
       true,
     );
 
-    const settings: button.Settings = { ...button.defaultSettings };
-    let output: button.Output = "style";
+    // 入力したラベル・URL と見た目の設定は sessionStorage に一時保存し、誤って再読み込みしても消えないようにする
+    const draftKey = "em-buttons";
+    const saved = draft.read(draftKey);
+    const savedSettings = draft.isObject(saved) ? saved["settings"] : null;
+    const settings: button.Settings = draft.isObject(savedSettings)
+      ? button.restoreSettings(savedSettings)
+      : { ...button.defaultSettings };
+    let output: button.Output =
+      draft.isObject(saved) && saved["output"] === "inline"
+        ? "inline"
+        : "style";
+    const backgrounds = ["light", "dark", "checker"];
+    if (
+      draft.isObject(saved) &&
+      typeof saved["previewBg"] === "string" &&
+      backgrounds.includes(saved["previewBg"])
+    )
+      stage.dataset["bg"] = saved["previewBg"];
+    const saveDraft = () =>
+      draft.write(draftKey, {
+        settings,
+        output,
+        previewBg: stage.dataset["bg"],
+      });
+    // 復元した形式と背景を、切り替えボタンの表示にも反映する
+    checkRadio(outputOptions, "output", output);
+    checkRadio(previewOptions, "previewBg", stage.dataset["bg"] ?? "light");
 
     const control = (name: string) =>
       form.querySelector<HTMLInputElement>(`[name="${name}"]`);
@@ -460,6 +493,7 @@ const initial = button.defaultSettings;
       }
       if (valid) outputNote.classList.remove("note--error");
       code.rows = Math.min(16, Math.max(4, code.value.split("\n").length));
+      saveDraft();
     };
 
     form.addEventListener("input", (event) => {
@@ -515,8 +549,10 @@ const initial = button.defaultSettings;
 
     previewOptions.addEventListener("input", (event) => {
       const target = event.target;
-      if (target instanceof HTMLInputElement && target.name === "previewBg")
+      if (target instanceof HTMLInputElement && target.name === "previewBg") {
         stage.dataset["bg"] = target.value;
+        saveDraft();
+      }
     });
 
     outputOptions.addEventListener("input", (event) => {
