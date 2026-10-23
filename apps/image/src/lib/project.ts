@@ -1,5 +1,5 @@
 // 作品ファイル（.tbimg）の保存と読み込み。
-// 作品はブラウザ内には保存せず、端末のファイルとして書き出す。
+// 保存（Ctrl+S）は端末のファイルとして書き出す（再読み込みに備えた一時保存は draft.ts）。
 // File System Access API が使えるブラウザでは同じファイルに上書き保存し、使えないブラウザではダウンロードする。
 import * as fonts from "./fonts";
 import * as model from "./model";
@@ -337,6 +337,36 @@ export const deserialize = async (file: Blob) => {
   } catch {
     throw new ProjectError("IMAGE の作品ファイルとして読み込めませんでした。");
   }
+  const blobs = new Map<string, Blob>();
+  const embedded =
+    isObject(data) && isObject(data["assets"]) ? data["assets"] : {};
+  for (const [id, url] of Object.entries(embedded)) {
+    if (typeof url !== "string" || !url.startsWith("data:image/")) continue;
+    try {
+      blobs.set(id, await (await fetch(url)).blob());
+    } catch {
+      // 壊れた画像はレイヤーごと読み飛ばす
+    }
+  }
+  return build(data, blobs);
+};
+
+/** 一時保存（draft.ts）用：画像を埋め込まず、作品の JSON だけを .tbimg と同じ形で書く */
+export const toJson = (doc: model.Doc) =>
+  JSON.stringify({ format: FORMAT, version: VERSION, doc });
+
+/** 一時保存した作品を読み込む。画像は Blob のまま受け取る */
+export const fromJson = async (json: string, blobs: Map<string, Blob>) => {
+  let data: unknown;
+  try {
+    data = JSON.parse(json);
+  } catch {
+    throw new ProjectError("一時保存した作品を読み込めませんでした。");
+  }
+  return build(data, blobs);
+};
+
+const build = async (data: unknown, blobs: Map<string, Blob>) => {
   if (!isObject(data) || data["format"] !== FORMAT || !isObject(data["doc"]))
     throw new ProjectError("IMAGE の作品ファイルではありません。");
   if (typeof data["version"] !== "number" || data["version"] > VERSION)
@@ -345,11 +375,8 @@ export const deserialize = async (file: Blob) => {
     );
 
   const assets: model.Assets = new Map();
-  const embedded = isObject(data["assets"]) ? data["assets"] : {};
-  for (const [id, url] of Object.entries(embedded)) {
-    if (typeof url !== "string" || !url.startsWith("data:image/")) continue;
+  for (const [id, blob] of blobs) {
     try {
-      const blob = await (await fetch(url)).blob();
       assets.set(id, { blob, image: await createImageBitmap(blob) });
     } catch {
       // 壊れた画像はレイヤーごと読み飛ばす

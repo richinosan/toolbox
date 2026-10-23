@@ -64,6 +64,45 @@ const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 export const isHex = (value: string) => HEX.test(value);
 
+const choices: Partial<Record<keyof Settings, readonly string[]>> = {
+  size: ["s", "m", "l"],
+  shadow: ["none", "soft", "strong"],
+  hover: ["none", "dark", "lift"],
+};
+const limits: Partial<Record<keyof Settings, number>> = {
+  radius: MAX_RADIUS,
+  borderWidth: MAX_BORDER,
+};
+const colors = new Set<keyof Settings>([
+  "background",
+  "backgroundEnd",
+  "color",
+  "borderColor",
+]);
+
+/** 一時保存から読んだ値を設定に戻す。種類や範囲が合わない項目は初期値のまま */
+export const restoreSettings = (value: Record<string, unknown>): Settings => {
+  const settings: Settings = { ...defaultSettings };
+  const target = settings as Record<keyof Settings, unknown>;
+  for (const key of Object.keys(defaultSettings) as (keyof Settings)[]) {
+    const saved = value[key];
+    const current = defaultSettings[key];
+    if (typeof saved !== typeof current) continue;
+    if (typeof saved === "number") {
+      if (Number.isFinite(saved))
+        target[key] = Math.min(limits[key] ?? 0, Math.max(0, saved));
+    } else if (typeof saved === "string") {
+      const allowed = choices[key];
+      if (allowed && !allowed.includes(saved)) continue;
+      if (colors.has(key) && !isHex(saved)) continue;
+      target[key] = saved.slice(0, 2000);
+    } else {
+      target[key] = saved;
+    }
+  }
+  return settings;
+};
+
 /** #rgb を #rrggbb にそろえ、小文字にする。不正な値は fallback を返す。 */
 export const normalizeHex = (value: string, fallback: string) => {
   const trimmed = value.trim();
