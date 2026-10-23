@@ -7,7 +7,8 @@ import * as text from "./text";
 
 export const EXTENSION = ".tbimg";
 const FORMAT = "toolbox-image";
-const VERSION = 1;
+/** 2: フレームとボックス（parent・box・layout）を追加 */
+const VERSION = 2;
 const MIME = "application/x-toolbox-image";
 
 type Writable = {
@@ -175,6 +176,47 @@ const readParts = (value: unknown) => {
   return parts;
 };
 
+const SIDE = 5000;
+
+const readBox = (value: unknown): model.Box => {
+  const b = isObject(value) ? value : {};
+  const d = model.defaultBox();
+  const p = isObject(b["padding"]) ? b["padding"] : {};
+  return {
+    padding: {
+      top: num(p["top"], 0, 0, SIDE),
+      right: num(p["right"], 0, 0, SIDE),
+      bottom: num(p["bottom"], 0, 0, SIDE),
+      left: num(p["left"], 0, 0, SIDE),
+    },
+    fill: hex(b["fill"], d.fill),
+    fillEnabled: bool(b["fillEnabled"], d.fillEnabled),
+    borderWidth: num(b["borderWidth"], 0, 0, 500),
+    borderColor: hex(b["borderColor"], d.borderColor),
+    radius: num(b["radius"], 0, 0, SIDE),
+  };
+};
+
+const readLayout = (value: unknown): model.FrameLayout => {
+  const l = isObject(value) ? value : {};
+  const d = model.defaultLayout();
+  const aligns = ["start", "center", "end"] as const;
+  return {
+    mode: oneOf(
+      l["mode"],
+      model.layoutModes.map(([key]) => key),
+      d.mode,
+    ),
+    gap: num(l["gap"], d.gap, 0, SIDE),
+    alignX: oneOf(l["alignX"], aligns, d.alignX),
+    alignY: oneOf(l["alignY"], aligns, d.alignY),
+    distribute: bool(l["distribute"], d.distribute),
+    stretch: bool(l["stretch"], d.stretch),
+    columns: int(l["columns"], d.columns, 1, 12),
+    hug: bool(l["hug"], d.hug),
+  };
+};
+
 const readLayer = (
   value: unknown,
   assetIds: Set<string>,
@@ -182,6 +224,8 @@ const readLayer = (
   if (!isObject(value)) return null;
   const base = {
     id: model.newId(),
+    // 親は、すべて読み込んでから新しい id に付け替える
+    parent: null,
     name: str(value["name"], "レイヤー", 200),
     visible: bool(value["visible"], true),
     opacity: num(value["opacity"], 100, 0, 100),
@@ -195,8 +239,17 @@ const readLayer = (
   switch (value["type"]) {
     case "image": {
       const asset = str(value["asset"], "");
-      return assetIds.has(asset) ? { ...base, type: "image", asset } : null;
+      return assetIds.has(asset)
+        ? { ...base, type: "image", asset, box: readBox(value["box"]) }
+        : null;
     }
+    case "frame":
+      return {
+        ...base,
+        type: "frame",
+        box: readBox(value["box"]),
+        layout: readLayout(value["layout"]),
+      };
     case "rect":
     case "ellipse":
       return {
@@ -246,6 +299,7 @@ const readLayer = (
                 parts,
               }
             : null,
+        box: readBox(value["box"]),
       };
     }
     case "path": {
@@ -308,12 +362,24 @@ export const deserialize = async (file: Blob) => {
     int(source["height"], 1080, 1, model.MAX_SIDE),
   );
   const ids = new Set(assets.keys());
-  const layers = Array.isArray(source["layers"])
-    ? source["layers"]
-        .slice(0, 500)
-        .map((layer) => readLayer(layer, ids))
-        .filter((layer) => layer !== null)
-    : [];
+  const layers: model.Layer[] = [];
+  /** ファイルの中の id → 読み込んだレイヤーの id */
+  const renamed = new Map<string, string>();
+  const parents = new Map<model.Layer, string>();
+  for (const value of Array.isArray(source["layers"])
+    ? source["layers"].slice(0, 500)
+    : []) {
+    const layer = readLayer(value, ids);
+    if (!layer || !isObject(value)) continue;
+    const id = str(value["id"], "", 200);
+    if (id) renamed.set(id, layer.id);
+    if (typeof value["parent"] === "string")
+      parents.set(layer, value["parent"]);
+    layers.push(layer);
+  }
+  for (const [layer, parent] of parents)
+    layer.parent = renamed.get(parent) ?? null;
+  model.repairTree(layers);
   const doc: model.Doc = {
     name: str(source["name"], "無題", 200) || "無題",
     width: size.width,
