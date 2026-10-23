@@ -9,7 +9,7 @@ import * as text from "./text";
  * 左揃えは左端、中央揃えは中心、右揃えは右端の位置を保つ。
  */
 export const fitText = (layer: model.TextLayer) => {
-  const size = text.measure(layer);
+  const size = textSize(layer);
   if (size.width === layer.width && size.height === layer.height) return false;
   const anchor =
     layer.align === "left" ? 0 : layer.align === "center" ? 0.5 : 1;
@@ -17,6 +17,16 @@ export const fitText = (layer: model.TextLayer) => {
   layer.width = size.width;
   layer.height = size.height;
   return true;
+};
+
+/** テキストの枠の大きさ（文字の大きさに、ボックスの余白と枠線を足す） */
+export const textSize = (layer: model.TextLayer) => {
+  const size = text.measure(layer);
+  const inset = model.insets(layer);
+  return {
+    width: size.width + inset.left + inset.right,
+    height: size.height + inset.top + inset.bottom,
+  };
 };
 
 /** テキストで使うフォントを読み込む（文字の範囲ごとに分かれたファイルの、必要な分だけ） */
@@ -71,6 +81,55 @@ const drawShape = (
   }
 };
 
+/** ボックスの形（角の丸さは枠の大きさに収める） */
+const boxPath = (
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) => {
+  context.beginPath();
+  context.roundRect(
+    x,
+    y,
+    Math.max(0, width),
+    Math.max(0, height),
+    Math.max(0, Math.min(radius, width / 2, height / 2)),
+  );
+};
+
+/** ボックスの背景と枠線（枠線は枠の内側に描く。CSS の box-sizing: border-box と同じ） */
+const drawBox = (
+  context: CanvasRenderingContext2D,
+  layer: model.Layer,
+  ox: number,
+  oy: number,
+) => {
+  if (!model.hasBox(layer)) return;
+  const { box, width, height } = layer;
+  if (box.fillEnabled) {
+    boxPath(context, ox, oy, width, height, box.radius);
+    context.fillStyle = box.fill;
+    context.fill();
+  }
+  if (box.borderWidth > 0) {
+    const half = box.borderWidth / 2;
+    boxPath(
+      context,
+      ox + half,
+      oy + half,
+      width - box.borderWidth,
+      height - box.borderWidth,
+      box.radius - half,
+    );
+    context.strokeStyle = box.borderColor;
+    context.lineWidth = box.borderWidth;
+    context.stroke();
+  }
+};
+
 export type Rendered = {
   canvas: HTMLCanvasElement;
   /** canvas の左上がレイヤーの左上からどれだけ外側にあるか */
@@ -79,8 +138,11 @@ export type Rendered = {
 
 /** レイヤーを描く canvas が、レイヤーの枠からどれだけ外に広がるか（ぼかし・縁取りなど） */
 export const layerPadding = (layer: model.Layer) => {
+  // 画像はぼかしても枠の外に広げない（ボックスを付けた画像は、図形と同じように広げる）
   const blurPad =
-    layer.type === "image" ? 0 : filters.blurPadding(layer.filters.blur);
+    layer.type === "image" && !model.boxVisible(layer.box)
+      ? 0
+      : filters.blurPadding(layer.filters.blur);
   return (
     (layer.type === "text"
       ? textPad(layer, text.maxSize(layer.runs))
@@ -104,18 +166,48 @@ export const renderLayer = (
   canvas.height = Math.max(1, Math.round(layer.height) + pad * 2);
   const context = canvas.getContext("2d", { willReadFrequently: false })!;
   context.imageSmoothingQuality = "high";
+  drawBox(context, layer, pad, pad);
+  const inset = model.insets(layer);
   if (layer.type === "image") {
     const asset = assets.get(layer.asset);
-    if (asset) context.drawImage(asset.image, 0, 0, layer.width, layer.height);
+    const { box } = layer;
+    const width = layer.width - inset.left - inset.right;
+    const height = layer.height - inset.top - inset.bottom;
+    if (asset && width > 0 && height > 0) {
+      context.save();
+      // 余白が無いときは、画像の角も枠の角に合わせて丸める（CSS の overflow: hidden と同じ見た目）
+      const { top, right, bottom, left } = box.padding;
+      if (box.radius > 0 && !(top || right || bottom || left)) {
+        boxPath(
+          context,
+          pad + inset.left,
+          pad + inset.top,
+          width,
+          height,
+          box.radius - box.borderWidth,
+        );
+        context.clip();
+      }
+      context.drawImage(
+        asset.image,
+        pad + inset.left,
+        pad + inset.top,
+        width,
+        height,
+      );
+      context.restore();
+    }
   } else if (layer.type === "text") {
     if (text.usesOutline(layer) && layer.outline) {
       text.drawParts(context, layer.outline.parts, {
         ...layer,
         size: text.maxSize(layer.runs),
-        ox: pad,
-        oy: pad,
+        ox: pad + inset.left,
+        oy: pad + inset.top,
       });
-    } else text.draw(context, layer, pad, pad);
+    } else text.draw(context, layer, pad + inset.left, pad + inset.top);
+  } else if (layer.type === "frame") {
+    // フレームはボックスだけ（中身はそれぞれのレイヤーとして上に重ねる）
   } else if (layer.type === "path") {
     text.drawParts(context, layer.parts, {
       ...layer,
@@ -142,7 +234,7 @@ export const renderLayer = (
   return { canvas, pad };
 };
 
-/** 描画結果に影響する値だけを並べたキー（位置・不透明度・名前・背面のフィルターは含まない） */
+/** 描画結果に影響する値だけを並べたキー（位置・不透明度・名前・親・背面のフィルターは含まない） */
 const cacheKey = (layer: model.Layer, fontVersion: number) => {
   const {
     x: _x,
@@ -150,6 +242,7 @@ const cacheKey = (layer: model.Layer, fontVersion: number) => {
     opacity: _o,
     visible: _v,
     name: _n,
+    parent: _p,
     backdrop: _b,
     ...rest
   } = layer;
@@ -197,17 +290,19 @@ export class LayerCache {
     const layer = doc.layers[index]!;
     const rendered = this.get(layer, assets);
     const parts: unknown[] = [doc.width, doc.height, background, hidden];
+    const shown = model.effective(doc.layers);
     for (const below of doc.layers.slice(0, index)) {
-      if (!below.visible || below.opacity <= 0) continue;
-      const shown = below.id !== hidden;
+      const state = shown.get(below.id)!;
+      if (!state.visible || state.opacity <= 0) continue;
+      const drawn = below.id !== hidden;
       // 見えている下のレイヤーは、ここで描画を最新にしておく（番号が描画結果と合うように）
-      if (shown) this.get(below, assets);
+      if (drawn) this.get(below, assets);
       parts.push(
         below.id,
-        shown ? this.revision(below.id) : 0,
+        drawn ? this.revision(below.id) : 0,
         below.x,
         below.y,
-        below.opacity,
+        state.opacity,
         JSON.stringify(below.backdrop),
       );
     }
@@ -249,7 +344,7 @@ export class LayerCache {
   }
 }
 
-/** 背面のフィルターの範囲を、レイヤーの形で切り抜く（図形は塗りの有無によらず形の内側） */
+/** 背面のフィルターの範囲を、レイヤーの形で切り抜く（図形とフレームは塗りの有無によらず形の内側） */
 const drawBackdropMask = (
   context: CanvasRenderingContext2D,
   layer: model.Layer,
@@ -257,7 +352,10 @@ const drawBackdropMask = (
   ox: number,
   oy: number,
 ) => {
-  if (layer.type === "rect" || layer.type === "ellipse") {
+  if (layer.type === "frame") {
+    boxPath(context, ox, oy, layer.width, layer.height, layer.box.radius);
+    context.fill();
+  } else if (layer.type === "rect" || layer.type === "ellipse") {
     context.beginPath();
     if (layer.type === "ellipse") {
       context.ellipse(
@@ -347,9 +445,12 @@ const drawStack = (
   hidden: string | null,
   background: string | null,
 ) => {
+  const shown = model.effective(doc.layers);
   doc.layers.slice(0, upto).forEach((layer, index) => {
-    if (!layer.visible || layer.opacity <= 0) return;
-    context.globalAlpha = layer.opacity / 100;
+    // フレームを隠すと中身も隠れ、フレームの不透明度は中身にも掛かる
+    const state = shown.get(layer.id)!;
+    if (!state.visible || state.opacity <= 0) return;
+    context.globalAlpha = state.opacity;
     // 背面のフィルターはレイヤーの背景として描くので、不透明度も一緒に掛かる（CSS と同じ）
     if (model.hasFilters(layer.backdrop)) {
       const backdrop = cache.backdrop(doc, assets, index, hidden, background);

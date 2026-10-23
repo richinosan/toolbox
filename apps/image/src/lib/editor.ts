@@ -5,6 +5,7 @@ import * as filters from "./filters";
 import * as fontpicker from "./fontpicker";
 import * as fonts from "./fonts";
 import * as fontsize from "./fontsize";
+import * as layout from "./layout";
 import * as model from "./model";
 import * as outline from "./outline";
 import * as project from "./project";
@@ -34,6 +35,8 @@ type Drag =
       startX: number;
       startY: number;
       origin: model.Layer;
+      /** 動かす前のレイヤーすべて（取り消すときに戻す。フレームは中身も一緒に動く） */
+      before: model.Layer[];
       moved: boolean;
     }
   | {
@@ -43,6 +46,7 @@ type Drag =
       startX: number;
       startY: number;
       origin: model.Layer;
+      before: model.Layer[];
     }
   | {
       kind: "crop-move" | "crop-resize";
@@ -149,6 +153,8 @@ const typeIcons: Record<model.LayerType, string> = {
   rect: '<svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg>',
   ellipse: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>',
   path: '<svg viewBox="0 0 24 24"><path d="M12 3 5 14l7 7 7-7z"/><circle cx="12" cy="13" r="1.6"/></svg>',
+  frame:
+    '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><rect x="6.5" y="8" width="4.5" height="8" rx="1"/><rect x="13" y="8" width="4.5" height="8" rx="1"/></svg>',
 };
 
 const eyeIcon = (visible: boolean) =>
@@ -156,18 +162,24 @@ const eyeIcon = (visible: boolean) =>
     ? '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'
     : '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.1 3.9M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 4.4-1"/></svg>';
 
-/** "filters.blur" や "backdrop.blur" のような、フィルターの中の値の指定を分ける */
-const filterPath = (layer: model.Layer, path: string) => {
-  const [group, key] = path.split(".");
-  return (group === "filters" || group === "backdrop") && key
-    ? { filters: layer[group] as Record<string, unknown>, key }
+/** "filters.blur" や "box.padding.top" のような、入れ子の値の指定をたどる（最後の 1 つの手前まで） */
+const propPath = (layer: model.Layer, path: string) => {
+  const keys = path.split(".");
+  const key = keys.pop()!;
+  let target: unknown = layer;
+  for (const part of keys)
+    target =
+      typeof target === "object" && target !== null
+        ? (target as Record<string, unknown>)[part]
+        : undefined;
+  return typeof target === "object" && target !== null
+    ? { target: target as Record<string, unknown>, key }
     : null;
 };
 
 const readProp = (layer: model.Layer, path: string): unknown => {
-  const filter = filterPath(layer, path);
-  if (filter) return filter.filters[filter.key];
-  return (layer as Record<string, unknown>)[path];
+  const found = propPath(layer, path);
+  return found ? found.target[found.key] : undefined;
 };
 
 /** 文字が無いときは、編集欄に入力の案内（プレースホルダー）を出す */
@@ -176,15 +188,6 @@ const markEmpty = (editor: HTMLElement, layer: model.TextLayer) => {
     "data-empty",
     layer.runs.every((run) => !run.text),
   );
-};
-
-/** 明るい色か（パネルの編集欄で、白っぽい文字を暗い背景で見せる） */
-const isLight = (color: string) => {
-  const value = Number.parseInt(color.slice(1), 16);
-  const r = Math.floor(value / 65536) % 256;
-  const g = Math.floor(value / 256) % 256;
-  const b = value % 256;
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
 };
 
 const highlights = () =>
@@ -282,12 +285,20 @@ const scaleLayer = (layer: model.Layer, scale: number) => {
   }
   if ("strokeWidth" in layer) layer.strokeWidth = round(layer.strokeWidth);
   if (layer.type === "rect") layer.radius = round(layer.radius);
+  if (model.hasBox(layer)) {
+    const { box } = layer;
+    for (const side of ["top", "right", "bottom", "left"] as const)
+      box.padding[side] = round(box.padding[side]);
+    box.borderWidth = round(box.borderWidth);
+    box.radius = round(box.radius);
+  }
+  if (layer.type === "frame") layer.layout.gap = round(layer.layout.gap);
   layer.filters.blur = round(layer.filters.blur);
   layer.backdrop.blur = round(layer.backdrop.blur);
   layer.x = Math.round(layer.x * scale);
   layer.y = Math.round(layer.y * scale);
   if (layer.type === "text") {
-    const size = text.measure(layer);
+    const size = render.textSize(layer);
     layer.width = size.width;
     layer.height = size.height;
   } else {
@@ -305,9 +316,8 @@ const formatBytes = (bytes: number) =>
     : `${Math.max(1, Math.round(bytes / 1000))} KB`;
 
 const writeProp = (layer: model.Layer, path: string, value: unknown) => {
-  const filter = filterPath(layer, path);
-  if (filter) filter.filters[filter.key] = value;
-  else (layer as Record<string, unknown>)[path] = value;
+  const found = propPath(layer, path);
+  if (found && found.key in found.target) found.target[found.key] = value;
 };
 
 const textChanged = (layer: model.Layer) => {
@@ -381,6 +391,7 @@ export const mount = (root: HTMLElement) => {
   const textBar = $<HTMLElement>(root, "#text-bar");
   const fontName = $<HTMLElement>(root, "#font-name");
   const fontMissing = $<HTMLElement>(root, "#font-missing");
+  const charScope = $<HTMLElement>(root, "#char-scope");
   const fontDialog = $<HTMLDialogElement>(root, "#font-dialog");
   const cropForm = $<HTMLFormElement>(root, "#crop-props");
   const cropBar = $<HTMLElement>(root, "#crop-bar");
@@ -428,7 +439,15 @@ export const mount = (root: HTMLElement) => {
   };
 
   // ---- 履歴 ----
-  const snapshot = () => JSON.stringify(doc);
+  /** フレームのレイアウトを計算し直す（中身の位置と、中身に合わせるフレームの大きさ） */
+  const relayout = () => {
+    if (doc) layout.apply(doc);
+  };
+
+  const snapshot = () => {
+    relayout();
+    return JSON.stringify(doc);
+  };
 
   const updateHistoryButtons = () => {
     undoButton.disabled = historyIndex <= 0;
@@ -546,6 +565,7 @@ export const mount = (root: HTMLElement) => {
 
   let frame = 0;
   const requestDraw = () => {
+    relayout();
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
@@ -687,9 +707,10 @@ export const mount = (root: HTMLElement) => {
   const hitLayer = (x: number, y: number) => {
     if (!doc) return null;
     const tolerance = 4 / camera.scale;
+    const shown = model.effective(doc.layers);
     for (let i = doc.layers.length - 1; i >= 0; i--) {
       const layer = doc.layers[i]!;
-      if (!layer.visible) continue;
+      if (!shown.get(layer.id)!.visible) continue;
       if (
         x >= layer.x - tolerance &&
         x <= layer.x + layer.width + tolerance &&
@@ -733,12 +754,36 @@ export const mount = (root: HTMLElement) => {
     return best?.handle ?? null;
   };
 
-  const snapTargets = (except: string) => {
+  /** 動かしているレイヤー（と中身）以外の、見えているレイヤーの端と中心 */
+  const snapTargets = (except: model.Layer) => {
     if (!doc) return { xs: [], ys: [] };
+    const moving = new Set(model.subtree(doc.layers, except));
+    const shown = model.effective(doc.layers);
     return snap.targets(
       doc,
-      doc.layers.filter((layer) => layer.visible && layer.id !== except),
+      doc.layers.filter(
+        (layer) => shown.get(layer.id)!.visible && !moving.has(layer),
+      ),
     );
+  };
+
+  /** レイアウトで並ぶ中身をドラッグしたら、指の位置に合わせて並び順を変える */
+  const reorderInFrame = (
+    layer: model.Layer,
+    point: { x: number; y: number },
+  ) => {
+    if (!doc) return;
+    const parent = model.parentOf(doc.layers, layer);
+    if (!parent) return;
+    const siblings = model
+      .childrenOf(doc.layers, parent.id)
+      .filter((l) => l.visible);
+    const from = siblings.indexOf(layer);
+    const to = layout.dropIndex(doc.layers, parent, layer, point);
+    if (from < 0 || to === from) return;
+    const target = siblings.filter((l) => l !== layer)[to];
+    moveSubtree(layer, target ?? null, target ? "before" : "end", parent.id);
+    renderLayerList();
   };
 
   // ---- ドラッグ操作 ----
@@ -749,6 +794,12 @@ export const mount = (root: HTMLElement) => {
   ) => {
     const layer = selected();
     if (!layer || !doc) return;
+    // フレームのレイアウトで並ぶ中身は、位置ではなく並び順を変える
+    if (model.isLaidOut(doc.layers, layer)) {
+      guides = { xs: [], ys: [] };
+      reorderInFrame(layer, point);
+      return;
+    }
     let dx = point.x - current.startX;
     let dy = point.y - current.startY;
     // Shift を押しながらだと、縦か横の一方向だけに動かす
@@ -762,15 +813,14 @@ export const mount = (root: HTMLElement) => {
     if (snapEnabled && !event.altKey) {
       const result = snap.snapMove(
         { x, y, width: layer.width, height: layer.height },
-        snapTargets(layer.id),
+        snapTargets(layer),
         SNAP_DISTANCE / camera.scale,
       );
       if (!event.shiftKey || dy === 0) x = result.x;
       if (!event.shiftKey || dx === 0) y = result.y;
       guides = result.guides;
     }
-    layer.x = Math.round(x);
-    layer.y = Math.round(y);
+    shiftSubtree(layer, Math.round(x) - layer.x, Math.round(y) - layer.y);
   };
 
   const applyResize = (
@@ -795,7 +845,7 @@ export const mount = (root: HTMLElement) => {
 
     guides = { xs: [], ys: [] };
     if (snapEnabled && !event.altKey) {
-      const targets = snapTargets(layer.id);
+      const targets = snapTargets(layer);
       const threshold = SNAP_DISTANCE / camera.scale;
       const edge = (value: number, lines: number[], axis: "xs" | "ys") => {
         const line = snap.snapEdge(value, lines, threshold);
@@ -850,7 +900,7 @@ export const mount = (root: HTMLElement) => {
               ...text.scaleOutline(origin.outline, scale),
             }
           : null;
-      const size = text.measure(layer);
+      const size = render.textSize(layer);
       layer.width = size.width;
       layer.height = size.height;
       layer.x = Math.round(
@@ -863,6 +913,9 @@ export const mount = (root: HTMLElement) => {
       );
       return;
     }
+    // 中身に合わせるフレームも、ハンドルで大きさを変えたら固定の大きさにする（Figma と同じ）
+    if (layer.type === "frame") layer.layout.hug = false;
+    // 大きさを変えても、自由に置いた中身はそのまま（レイアウトで並ぶ中身は並べ直す）
     layer.x = Math.round(left);
     layer.y = Math.round(top);
     layer.width = Math.max(1, Math.round(right - left));
@@ -873,10 +926,7 @@ export const mount = (root: HTMLElement) => {
   const cancelLayerDrag = () => {
     if (!doc || !drag || (drag.kind !== "move" && drag.kind !== "resize"))
       return;
-    const origin = drag.origin;
-    doc.layers = doc.layers.map((layer) =>
-      layer.id === origin.id ? origin : layer,
-    );
+    doc.layers = drag.before;
     guides = { xs: [], ys: [] };
   };
 
@@ -947,6 +997,7 @@ export const mount = (root: HTMLElement) => {
         startX: point.x,
         startY: point.y,
         origin: structuredClone(current),
+        before: structuredClone(doc.layers),
       };
       return;
     }
@@ -959,6 +1010,7 @@ export const mount = (root: HTMLElement) => {
         startX: point.x,
         startY: point.y,
         origin: structuredClone(hit),
+        before: structuredClone(doc.layers),
         moved: false,
       };
       return;
@@ -1162,6 +1214,52 @@ export const mount = (root: HTMLElement) => {
     requestDraw();
   };
 
+  // ---- フレームの入れ子 ----
+  /** レイヤーを中身ごと動かす */
+  function shiftSubtree(layer: model.Layer, dx: number, dy: number) {
+    if (!doc || (dx === 0 && dy === 0)) return;
+    for (const l of model.subtree(doc.layers, layer)) {
+      l.x += dx;
+      l.y += dy;
+    }
+  }
+
+  /**
+   * レイヤーを中身ごと、target の下（before）か上（after）、または parent の中の一番上（end）に移す。
+   * 移したレイヤーの親は parent にする
+   */
+  function moveSubtree(
+    layer: model.Layer,
+    target: model.Layer | null,
+    where: "before" | "after" | "end",
+    parent: string | null,
+  ) {
+    if (!doc) return;
+    const index = doc.layers.indexOf(layer);
+    const moving = doc.layers.splice(
+      index,
+      model.subtreeEnd(doc.layers, index) - index,
+    );
+    let at: number;
+    if (where === "end") {
+      const frameIndex = parent
+        ? doc.layers.findIndex((l) => l.id === parent)
+        : -1;
+      at =
+        frameIndex < 0
+          ? doc.layers.length
+          : model.subtreeEnd(doc.layers, frameIndex);
+    } else {
+      const targetIndex = doc.layers.indexOf(target!);
+      at =
+        where === "before"
+          ? targetIndex
+          : model.subtreeEnd(doc.layers, targetIndex);
+    }
+    moving[0]!.parent = parent;
+    doc.layers.splice(at, 0, ...moving);
+  }
+
   const thumbnail = (layer: model.Layer) => {
     const canvas = document.createElement("canvas");
     const size = 36;
@@ -1193,11 +1291,21 @@ export const mount = (root: HTMLElement) => {
     const layers = doc?.layers ?? [];
     layerEmpty.hidden = layers.length > 0;
     layerActions.hidden = layers.length === 0;
-    // 上にあるレイヤーほどリストの上に出す
-    for (const layer of layers.toReversed()) {
+    // 上にあるレイヤーほどリストの上に出す。フレームの中身は、フレームの下に字下げして出す
+    const ordered: { layer: model.Layer; depth: number }[] = [];
+    const walk = (parent: string | null, depth: number) => {
+      for (const layer of layers.toReversed()) {
+        if (layer.parent !== parent) continue;
+        ordered.push({ layer, depth });
+        if (layer.type === "frame") walk(layer.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    for (const { layer, depth } of ordered) {
       const item = document.createElement("li");
       item.className = "layer";
       item.dataset["id"] = layer.id;
+      item.style.setProperty("--depth", String(depth));
       item.classList.toggle("layer--selected", layer.id === selectedId);
       item.classList.toggle("layer--hidden", !layer.visible);
 
@@ -1228,16 +1336,24 @@ export const mount = (root: HTMLElement) => {
       layerList.append(item);
     }
     const layer = selected();
+    const siblings = layer
+      ? layers.filter((l) => l.parent === layer.parent)
+      : [];
+    const index = layer ? siblings.indexOf(layer) : -1;
     for (const button of layerActions.querySelectorAll<HTMLButtonElement>(
       "[data-action]",
     )) {
       const action = button.dataset["action"];
-      const index = layer ? (doc?.layers.indexOf(layer) ?? -1) : -1;
       button.disabled =
         !layer ||
-        (action === "layer-up" && index === layers.length - 1) ||
-        (action === "layer-down" && index === 0);
+        (action === "layer-up" && index === siblings.length - 1) ||
+        (action === "layer-down" && index === 0) ||
+        (action === "layer-unwrap" && !layer.parent);
     }
+    const unwrap = layerActions.querySelector<HTMLElement>(
+      '[data-action="layer-unwrap"]',
+    );
+    if (unwrap) unwrap.hidden = !layer?.parent;
   }
 
   layerList.addEventListener("click", (event) => {
@@ -1290,6 +1406,7 @@ export const mount = (root: HTMLElement) => {
       if (input && document.activeElement !== input && key in layer)
         input.value = String(readProp(layer, key));
     }
+    syncBoxPanel(layer);
     if (layer.type === "text") syncCharControls();
   }
 
@@ -1318,6 +1435,7 @@ export const mount = (root: HTMLElement) => {
     for (const section of props.querySelectorAll<HTMLElement>("[data-for]")) {
       section.hidden = !section.dataset["for"]!.split(" ").includes(layer.type);
     }
+    syncBoxPanel(layer);
     for (const input of propInputs()) {
       const value = readProp(layer, input.dataset["prop"]!);
       if (input.type === "checkbox") input.checked = value === true;
@@ -1326,13 +1444,21 @@ export const mount = (root: HTMLElement) => {
         input.value = String(value ?? "");
       if (input.type === "range") showOutput(input);
     }
-    // テキストの枠の大きさは文字から決まる
+    // テキストの枠の大きさは文字から決まる。フレームのレイアウトで並ぶ中身の位置は、レイアウトで決まる
+    const laidOut = doc ? model.isLaidOut(doc.layers, layer) : false;
     for (const key of ["width", "height"]) {
       const input = props.querySelector<HTMLInputElement>(
         `[data-prop="${key}"]`,
       );
       if (input) input.disabled = layer.type === "text";
     }
+    for (const key of ["x", "y"]) {
+      const input = props.querySelector<HTMLInputElement>(
+        `[data-prop="${key}"]`,
+      );
+      if (input) input.disabled = laidOut;
+    }
+    $<HTMLElement>(props, "#laid-out-note").hidden = !laidOut;
     if (layer.type === "text") {
       if (document.activeElement !== rich) renderPanelText(layer);
       syncCharControls();
@@ -1343,6 +1469,46 @@ export const mount = (root: HTMLElement) => {
       pathFill.value = layer.parts[0]?.color ?? "#ffffff";
     for (const input of strokeNoneInputs())
       input.checked = "strokeWidth" in layer && layer.strokeWidth === 0;
+  }
+
+  /** 余白を上下左右そろえて変えるか（パネルだけの設定。保存はしない） */
+  let padLinked = true;
+
+  /** ボックスとレイアウトの欄（入力欄の値は syncPanel で入れる） */
+  function syncBoxPanel(layer: model.Layer) {
+    if (layer.type === "frame") {
+      const mode = layer.layout.mode;
+      for (const element of props.querySelectorAll<HTMLElement>(
+        "[data-layout]",
+      ))
+        element.hidden = !element.dataset["layout"]!.split(" ").includes(mode);
+      for (const input of props.querySelectorAll<HTMLInputElement>(
+        "[data-align]",
+      ))
+        input.checked =
+          input.value === `${layer.layout.alignX} ${layer.layout.alignY}`;
+      // 並ぶ向きを、揃えのボタンの見た目に出す
+      $<HTMLElement>(props, ".align-pad").dataset["mode"] = mode;
+      $<HTMLElement>(props, "#stretch-label").textContent =
+        mode === "grid"
+          ? "セルいっぱいに広げる（stretch）"
+          : mode === "row"
+            ? "高さを揃える（stretch）"
+            : "幅を揃える（stretch）";
+    }
+    if (model.hasBox(layer)) {
+      const { top, right, bottom, left } = layer.box.padding;
+      // 4 辺が違うレイヤーを選んだら、そろえるのをやめる
+      if (!(top === right && right === bottom && bottom === left))
+        padLinked = false;
+      $<HTMLInputElement>(props, "[data-pad-link]").checked = padLinked;
+      const inset = model.insets(layer);
+      $<HTMLElement>(props, "#box-content").textContent =
+        `${Math.max(0, Math.round(layer.width - inset.left - inset.right))} × ${Math.max(0, Math.round(layer.height - inset.top - inset.bottom))}`;
+    }
+    const code = layout.css(layer);
+    $<HTMLElement>(props, "#css-preview").textContent =
+      code || "/* 指定なし */";
   }
 
   const docInput = (name: string) =>
@@ -1369,15 +1535,18 @@ export const mount = (root: HTMLElement) => {
   /** 書式を適用する範囲がある編集欄（キャンバス上で編集中ならそちら） */
   const activeEditor = () => (editingId ? stageText : rich);
 
-  /** パネルの編集欄は、一番大きな文字が 22px 程度になるように縮めて見せる */
+  /**
+   * パネルの編集欄は、ふつうの入力欄と同じ文字で見せる（フォント・大きさ・色・縁取りはキャンバスで見る）。
+   * 色が混ざっているときだけ、文字の下にその色の線を引いて、どこが違う書式か分かるようにする
+   */
   const renderPanelText = (layer: model.TextLayer) => {
     richedit.render(rich, layer.runs, {
-      scale: Math.min(1, 22 / text.maxSize(layer.runs)),
-      lineHeight: layer.lineHeight,
-      effects: effectsOf(layer),
+      scale: 1,
+      lineHeight: 160,
+      plain: true,
     });
-    rich.style.textAlign = layer.align;
-    rich.classList.toggle("rich--dark", isLight(layer.runs[0]!.style.color));
+    const colors = new Set(layer.runs.map((run) => run.style.color));
+    rich.classList.toggle("rich--mixed", colors.size > 1);
     markEmpty(rich, layer);
   };
 
@@ -1416,9 +1585,11 @@ export const mount = (root: HTMLElement) => {
     if (stageTextScale !== camera.scale) renderEditors(layer);
     const anchor =
       layer.align === "left" ? 0 : layer.align === "center" ? 0.5 : 1;
-    const p = toScreen(layer.x, layer.y);
-    const x =
-      p.x + (layer.width * camera.scale - stageText.offsetWidth) * anchor;
+    // ボックスの余白と枠線の内側に置く
+    const inset = model.insets(layer);
+    const p = toScreen(layer.x + inset.left, layer.y + inset.top);
+    const inner = layer.width - inset.left - inset.right;
+    const x = p.x + (inner * camera.scale - stageText.offsetWidth) * anchor;
     stageText.style.translate = `${Math.round(x)}px ${Math.round(p.y)}px`;
   }
 
@@ -1460,6 +1631,14 @@ export const mount = (root: HTMLElement) => {
     const mixed = styles.some((s) => !fonts.sameFont(s.font, style.font));
     fontName.textContent = `${style.font.family}${mixed ? " ほか" : ""}`;
     fontName.style.fontFamily = fonts.cssFamily(style.font);
+    // 書式をどこに適用するか（全体か、選んだ文字だけか）
+    const count =
+      end > start
+        ? Array.from(text.plainText(layer.runs).slice(start, end)).length
+        : 0;
+    charScope.textContent =
+      count > 0 ? `選んだ ${count} 文字に適用` : "全体に適用";
+    charScope.classList.toggle("scope--partial", count > 0);
   }
 
   /** スライダーを大きさに合わせる。目盛りの丸めで、動かしている最中のつまみが跳ねないようにする */
@@ -1727,13 +1906,16 @@ export const mount = (root: HTMLElement) => {
       );
       return;
     }
+    // ボックス（余白・背景・枠線）は無くなるので、文字の位置に合わせる
+    const inset = model.insets(layer);
     const path: model.PathLayer = {
       id: layer.id,
+      parent: layer.parent,
       name: layer.name,
       visible: layer.visible,
       opacity: layer.opacity,
-      x: layer.x,
-      y: layer.y,
+      x: layer.x + inset.left,
+      y: layer.y + inset.top,
       width: shape.width,
       height: shape.height,
       filters: layer.filters,
@@ -1785,6 +1967,37 @@ export const mount = (root: HTMLElement) => {
       else if (char === "bold") applyChar({ bold: input.checked });
       return;
     }
+    // フレームの揃え（横・縦をまとめて 1 つのボタンで選ぶ）
+    if (input.dataset["align"] !== undefined && layer.type === "frame") {
+      const [x, y] = input.value.split(" ") as [
+        model.AlignValue,
+        model.AlignValue,
+      ];
+      layer.layout.alignX = x;
+      layer.layout.alignY = y;
+      syncBoxPanel(layer);
+      requestDraw();
+      return;
+    }
+    if (
+      input instanceof HTMLInputElement &&
+      input.dataset["padLink"] !== undefined
+    ) {
+      padLinked = input.checked;
+      if (padLinked && model.hasBox(layer)) {
+        const value = layer.box.padding.top;
+        layer.box.padding = {
+          top: value,
+          right: value,
+          bottom: value,
+          left: value,
+        };
+        if (layer.type === "text") textChanged(layer);
+        syncPanel();
+        requestDraw();
+      }
+      return;
+    }
     // パスの塗りは、すべての文字の色をまとめて変える
     if (input === pathFill && layer.type === "path") {
       layer.parts = layer.parts.map((part) => ({
@@ -1834,8 +2047,37 @@ export const mount = (root: HTMLElement) => {
       value = value.slice(0, 200);
     }
     writeProp(layer, path, value);
-    if (path === "width" || path === "height")
+    if (path === "width" || path === "height") {
       writeProp(layer, path, Math.max(1, Math.round(value as number)));
+      // 大きさを数字で決めたら、中身に合わせるのをやめる
+      if (layer.type === "frame") layer.layout.hug = false;
+    }
+    // 余白を上下左右そろえるときは、1 つ変えたら 4 辺とも同じにする
+    if (input.dataset["pad"] && padLinked && model.hasBox(layer)) {
+      const pad = value as number;
+      layer.box.padding = { top: pad, right: pad, bottom: pad, left: pad };
+      for (const other of props.querySelectorAll<HTMLInputElement>(
+        "[data-pad]",
+      ))
+        if (other !== input) other.value = String(pad);
+    }
+    // 色を選んだら、背景・枠線も付ける（色だけ選んで何も変わらない、とならないように）
+    if (model.hasBox(layer) && path === "box.fill") {
+      layer.box.fillEnabled = true;
+      syncPanel();
+    }
+    if (
+      model.hasBox(layer) &&
+      path === "box.borderColor" &&
+      layer.box.borderWidth === 0
+    ) {
+      layer.box.borderWidth = 2;
+      syncPanel();
+    }
+    if (path.startsWith("box.") || path.startsWith("layout.")) {
+      syncBoxPanel(layer);
+      if (path === "layout.mode" || path === "box.fillEnabled") syncPanel();
+    }
     if (layer.type === "text") {
       textChanged(layer);
       renderEditors(layer);
@@ -2273,10 +2515,22 @@ export const mount = (root: HTMLElement) => {
 
   const addLayer = (layer: model.Layer) => {
     if (!doc) return;
-    // 選択中のレイヤーのすぐ上に置く
+    // 選択中のレイヤーのすぐ上に置く。フレームを選んでいたら、フレームの中の一番上に入れる
     const current = selected();
-    const index = current ? doc.layers.indexOf(current) + 1 : doc.layers.length;
-    doc.layers.splice(index, 0, layer);
+    if (current?.type === "frame") {
+      layer.parent = current.id;
+      doc.layers.splice(
+        model.subtreeEnd(doc.layers, doc.layers.indexOf(current)),
+        0,
+        layer,
+      );
+    } else {
+      layer.parent = current?.parent ?? null;
+      const index = current
+        ? model.subtreeEnd(doc.layers, doc.layers.indexOf(current))
+        : doc.layers.length;
+      doc.layers.splice(index, 0, layer);
+    }
     selectedId = layer.id;
     commit();
     syncPanel();
@@ -2623,30 +2877,81 @@ export const mount = (root: HTMLElement) => {
   };
 
   // ---- レイヤーの並べ替え・複製・削除 ----
+  /** 同じフレームの中（またはフレームの外どうし）で、1 つ上・下に動かす（中身ごと） */
   const moveLayer = (direction: 1 | -1) => {
     const layer = selected();
     if (!doc || !layer) return;
-    const index = doc.layers.indexOf(layer);
-    const next = index + direction;
-    if (next < 0 || next >= doc.layers.length) return;
-    doc.layers.splice(index, 1);
-    doc.layers.splice(next, 0, layer);
+    const siblings = doc.layers.filter((l) => l.parent === layer.parent);
+    const target = siblings[siblings.indexOf(layer) + direction];
+    if (!target) return;
+    moveSubtree(
+      layer,
+      target,
+      direction === 1 ? "after" : "before",
+      layer.parent,
+    );
     commit();
     requestDraw();
   };
 
   const duplicate = () => {
     const layer = selected();
-    if (!layer) return;
-    addLayer(model.duplicateLayer(layer));
+    if (!doc || !layer) return;
+    const copies = model.duplicateSubtree(model.subtree(doc.layers, layer));
+    const index = model.subtreeEnd(doc.layers, doc.layers.indexOf(layer));
+    doc.layers.splice(index, 0, ...copies);
+    selectedId = copies[0]!.id;
+    commit();
+    syncPanel();
+    requestDraw();
+  };
+
+  /** 選んでいるレイヤーをフレームで囲む（中身に合わせる横並びのフレーム。余白で背景が付く） */
+  const wrapInFrame = () => {
+    const layer = selected();
+    if (!doc || !layer) return;
+    const wrapper = model.createFrame(doc);
+    const unit = wrapper.box.padding.top;
+    wrapper.parent = layer.parent;
+    wrapper.layout.hug = true;
+    wrapper.x = layer.x - unit;
+    wrapper.y = layer.y - unit;
+    wrapper.width = layer.width + unit * 2;
+    wrapper.height = layer.height + unit * 2;
+    const index = doc.layers.indexOf(layer);
+    doc.layers.splice(index, 0, wrapper);
+    layer.parent = wrapper.id;
+    selectedId = wrapper.id;
+    commit();
+    syncPanel();
+    requestDraw();
+    notify(
+      "フレームで囲みました。余白・背景・並べ方は右の設定で変えられます。",
+    );
+  };
+
+  /** フレームから出す（親のフレームのすぐ上に置く。位置はそのまま） */
+  const unwrapFromFrame = () => {
+    const layer = selected();
+    if (!doc || !layer) return;
+    const parent = model.parentOf(doc.layers, layer);
+    if (!parent) return;
+    moveSubtree(layer, parent, "after", parent.parent);
+    commit();
+    syncPanel();
+    requestDraw();
   };
 
   const remove = () => {
     const layer = selected();
     if (!doc || !layer) return;
     const index = doc.layers.indexOf(layer);
-    doc.layers.splice(index, 1);
-    selectedId = doc.layers[Math.min(index, doc.layers.length - 1)]?.id ?? null;
+    // フレームは中身ごと消す
+    doc.layers.splice(index, model.subtreeEnd(doc.layers, index) - index);
+    selectedId =
+      layer.parent ??
+      doc.layers[Math.min(index, doc.layers.length - 1)]?.id ??
+      null;
     cache.prune(doc);
     commit();
     syncPanel();
@@ -2658,6 +2963,7 @@ export const mount = (root: HTMLElement) => {
     const layer = selected();
     if (!doc || !layer || layer.type === "image" || layer.type === "text")
       return;
+    if (layer.type === "frame") layer.layout.hug = false;
     if (keepRatio) {
       const scale = Math.min(
         doc.width / layer.width,
@@ -2681,8 +2987,7 @@ export const mount = (root: HTMLElement) => {
   const nudge = (dx: number, dy: number) => {
     const layer = selected();
     if (!layer) return;
-    layer.x += dx;
-    layer.y += dy;
+    shiftSubtree(layer, dx, dy);
     syncGeometry();
     requestDraw();
   };
@@ -2697,6 +3002,7 @@ export const mount = (root: HTMLElement) => {
     "add-text": addText,
     "add-rect": () => doc && addLayer(model.createShape(doc, "rect")),
     "add-ellipse": () => doc && addLayer(model.createShape(doc, "ellipse")),
+    "add-frame": () => doc && addLayer(model.createFrame(doc)),
     undo,
     redo,
     snap: () => {
@@ -2713,6 +3019,8 @@ export const mount = (root: HTMLElement) => {
     "layer-down": () => moveLayer(-1),
     "layer-duplicate": duplicate,
     "layer-delete": remove,
+    "layer-wrap": wrapInFrame,
+    "layer-unwrap": unwrapFromFrame,
     "fit-fill": () => fitToCanvas(false),
     "fit-contain": () => fitToCanvas(true),
     "pick-font": () => void pickFont(),

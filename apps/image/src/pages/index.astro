@@ -20,6 +20,8 @@ const icons = {
   text: '<path d="M5 7V4h14v3M12 4v16M9 20h6"/>',
   rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
   ellipse: '<circle cx="12" cy="12" r="8"/>',
+  frame:
+    '<rect x="3" y="4" width="18" height="16" rx="2.5"/><rect x="6.5" y="8" width="4.5" height="8" rx="1"/><rect x="13" y="8" width="4.5" height="8" rx="1"/>',
   undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>',
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
   snap: '<path d="M6 3v6a6 6 0 0 0 12 0V3"/><path d="M6 7h4M14 7h4"/>',
@@ -47,7 +49,7 @@ const icons = {
     {
       target: "#add-tools",
       title: "レイヤーを追加・トリミング",
-      body: "画像・テキスト・四角・丸を、レイヤーとして重ねます。画像はキャンバスにドロップしたり、貼り付けたりしても追加できます。「トリミング」では、キャンバスを 1:1・4:5・16:9・OGP・X・A4 などの比率に切り抜けます。",
+      body: "画像・テキスト・四角・丸・フレームを、レイヤーとして重ねます。フレームは Web の div のような入れ物で、中に入れたレイヤーを横並び・縦並び（flex）やグリッドで並べられます。画像はキャンバスにドロップしたり、貼り付けたりしても追加できます。「トリミング」では、キャンバスを 1:1・4:5・16:9・OGP・X・A4 などの比率に切り抜けます。",
     },
     {
       target: "#stage",
@@ -57,12 +59,12 @@ const icons = {
     {
       target: "#layers-panel",
       title: "レイヤー",
-      body: "上にあるものほど手前に表示されます。目のボタンで表示・非表示を切り替え、下のボタンで重なり順の変更・複製・削除ができます。",
+      body: "上にあるものほど手前に表示されます。フレームの中身は、フレームの下に字下げして並びます。目のボタンで表示・非表示を切り替え、下のボタンで重なり順の変更・複製・削除・フレームで囲む・フレームから出すができます。",
     },
     {
       target: "#props-panel",
       title: "設定",
-      body: "選んだレイヤーの文字・フォント・色・大きさと、カラーフィルターやガウスぼかし、背面のフィルター（すりガラスなど）を変えます。テキストは文字を選ぶと、その文字だけの書式を変えられます。図形は「キャンバスに合わせる」で、キャンバス全体に広げたり、縦横比を保ったまま収めたりできます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
+      body: "選んだレイヤーの文字・フォント・色・大きさ、ボックス（余白・背景・枠線・角の丸さ。CSS の padding・border と同じ）、フレームの並べ方（自由・横並び・縦並び・グリッド）と、カラーフィルターやガウスぼかし、背面のフィルター（すりガラスなど）を変えます。テキストは文字を選ぶと、その文字だけの書式を変えられます。図形は「キャンバスに合わせる」で、キャンバス全体に広げたり、縦横比を保ったまま収めたりできます。何も選んでいないときは、キャンバスの大きさと背景を変えられます。",
     },
     {
       target: "#file-tools",
@@ -160,6 +162,19 @@ const icons = {
               set:html={icons.ellipse}
             />
             <span>丸</span>
+          </button>
+          <button
+            class="tool ready-only"
+            type="button"
+            data-action="add-frame"
+            title="フレームを追加（中に入れたレイヤーを並べる入れ物）"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              set:html={icons.frame}
+            />
+            <span>フレーム</span>
           </button>
           <button
             class="tool tool--toggle ready-only"
@@ -352,6 +367,22 @@ const icons = {
               >
                 削除
               </button>
+              <button
+                class="button button--small"
+                type="button"
+                data-action="layer-wrap"
+                title="選んでいるレイヤーをフレームに入れて、余白や背景を付けられるようにします"
+              >
+                フレームで囲む
+              </button>
+              <button
+                class="button button--small"
+                type="button"
+                data-action="layer-unwrap"
+                hidden
+              >
+                フレームから出す
+              </button>
             </div>
           </section>
 
@@ -490,23 +521,29 @@ const icons = {
 
               <div class="fields" data-for="text">
                 <div class="field">
-                  <span id="rich-label" class="field__label">
-                    文字を入力
-                  </span>
+                  <label id="rich-label" class="field__label" for="rich">
+                    テキスト
+                  </label>
                   <div
                     id="rich"
-                    class="input rich"
+                    class="input rich rich--plain"
                     contenteditable="true"
                     role="textbox"
                     aria-multiline="true"
                     aria-labelledby="rich-label"
                     aria-describedby="rich-hint"
-                    data-placeholder="ここに文字を入力"
+                    data-placeholder="表示する文字を入力"
                     spellcheck="false"
                   ></div>
                   <p id="rich-hint" class="note">
-                    キャンバスの文字をダブルクリック（ダブルタップ）しても、その場で編集できます。文字を選ぶと、その文字だけにフォント・大きさ・色・太字を適用します（選んでいないときは全体）。
+                    一部を選ぶと、その文字だけ書式を変えられます。色の違う文字には、その色の下線が付きます。
                   </p>
+                </div>
+                <div class="subhead">
+                  <span class="subhead__title">文字の書式</span>
+                  <span id="char-scope" class="scope" aria-live="polite">
+                    全体に適用
+                  </span>
                 </div>
                 <div class="field">
                   <span class="field__label" id="font-label">
@@ -599,6 +636,9 @@ const icons = {
                     </label>
                   </div>
                 </div>
+                <div class="subhead">
+                  <span class="subhead__title">段落</span>
+                </div>
                 <fieldset class="seg">
                   <legend class="field__label">揃え</legend>
                   <div class="seg__options">
@@ -635,6 +675,9 @@ const icons = {
                     max="250"
                     step="5"
                   />
+                </div>
+                <div class="subhead">
+                  <span class="subhead__title">効果</span>
                 </div>
                 <div class="range">
                   <label class="field__label" for="prop-textStroke">
@@ -779,9 +822,199 @@ const icons = {
                 </div>
               </div>
 
+              <details class="group" data-for="frame" open>
+                <summary class="group__title">並べ方（レイアウト）</summary>
+                <div class="fields">
+                  <fieldset class="seg">
+                    <legend class="field__label">中身の並べ方</legend>
+                    <div class="seg__options">
+                      {model.layoutModes.map(([value, label]) => (
+                        <label class="seg__option">
+                          <input
+                            class="seg__input"
+                            type="radio"
+                            name="layout-mode"
+                            value={value}
+                            data-prop="layout.mode"
+                          />
+                          <span class="seg__label">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <p class="note" data-layout="free">
+                    中身は自由に置けます。フレームを動かすと中身も一緒に動きます。
+                  </p>
+                  <div class="layout-grid" data-layout="row column grid">
+                    <fieldset class="align-pad">
+                      <legend class="field__label">揃え</legend>
+                      <div class="align-pad__cells">
+                        {["start", "center", "end"].flatMap((y) =>
+                          ["start", "center", "end"].map((x) => (
+                            <label class="align-pad__cell">
+                              <input
+                                class="align-pad__input"
+                                type="radio"
+                                name="layout-align"
+                                value={`${x} ${y}`}
+                                data-align
+                                aria-label={`${{ start: "上", center: "中央", end: "下" }[y]}・${{ start: "左", center: "中央", end: "右" }[x]}`}
+                              />
+                              <span
+                                class="align-pad__dot"
+                                aria-hidden="true"
+                              ></span>
+                            </label>
+                          )),
+                        )}
+                      </div>
+                    </fieldset>
+                    <div class="fields">
+                      <label class="field">
+                        <span class="field__label">間隔（gap）</span>
+                        <input
+                          class="input"
+                          type="number"
+                          data-prop="layout.gap"
+                          min="0"
+                          max="5000"
+                          step="1"
+                          inputmode="numeric"
+                        />
+                      </label>
+                      <label class="field" data-layout="grid">
+                        <span class="field__label">列の数</span>
+                        <input
+                          class="input"
+                          type="number"
+                          data-prop="layout.columns"
+                          min="1"
+                          max="12"
+                          step="1"
+                          inputmode="numeric"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div class="checks" data-layout="row column grid">
+                    <label class="check" data-layout="row column">
+                      <input type="checkbox" data-prop="layout.distribute" />
+                      <span>均等に配置（space-between）</span>
+                    </label>
+                    <label class="check">
+                      <input type="checkbox" data-prop="layout.stretch" />
+                      <span id="stretch-label">伸ばして揃える（stretch）</span>
+                    </label>
+                    <label class="check">
+                      <input type="checkbox" data-prop="layout.hug" />
+                      <span>大きさを中身に合わせる（fit-content）</span>
+                    </label>
+                  </div>
+                  <p class="note" data-layout="row column grid">
+                    中身の位置は自動で決まります。中身をドラッグすると並び順を変えられます。
+                  </p>
+                </div>
+              </details>
+
+              <details class="group" data-for="text image frame" open>
+                <summary class="group__title">
+                  ボックス（余白・背景・枠線）
+                </summary>
+                <div class="fields">
+                  <div class="boxmodel" aria-label="余白（padding）">
+                    <span class="boxmodel__name" aria-hidden="true">
+                      余白
+                    </span>
+                    {[
+                      ["top", "上"],
+                      ["right", "右"],
+                      ["bottom", "下"],
+                      ["left", "左"],
+                    ].map(([side, label]) => (
+                      <input
+                        class={`input boxmodel__input boxmodel__input--${side}`}
+                        type="number"
+                        data-prop={`box.padding.${side}`}
+                        data-pad={side}
+                        min="0"
+                        max="5000"
+                        step="1"
+                        inputmode="numeric"
+                        aria-label={`${label}の余白`}
+                      />
+                    ))}
+                    <span id="box-content" class="boxmodel__content">
+                      中身
+                    </span>
+                  </div>
+                  <label class="check">
+                    <input type="checkbox" data-pad-link checked />
+                    <span>上下左右をそろえる</span>
+                  </label>
+                  <div class="inline">
+                    <input
+                      class="swatch"
+                      type="color"
+                      data-prop="box.fill"
+                      aria-label="背景の色"
+                    />
+                    <label class="check">
+                      <input type="checkbox" data-prop="box.fillEnabled" />
+                      <span>背景を塗る</span>
+                    </label>
+                  </div>
+                  <div class="range">
+                    <label class="field__label" for="prop-borderWidth">
+                      枠線
+                    </label>
+                    <output for="prop-borderWidth"></output>
+                    <input
+                      id="prop-borderWidth"
+                      class="range__input range__input--with-swatch"
+                      type="range"
+                      data-prop="box.borderWidth"
+                      data-unit="px"
+                      min="0"
+                      max="100"
+                      step="1"
+                    />
+                    <input
+                      class="swatch swatch--small"
+                      type="color"
+                      data-prop="box.borderColor"
+                      aria-label="枠線の色"
+                    />
+                  </div>
+                  <div class="range">
+                    <label class="field__label" for="prop-boxRadius">
+                      角の丸さ
+                    </label>
+                    <output for="prop-boxRadius"></output>
+                    <input
+                      id="prop-boxRadius"
+                      class="range__input"
+                      type="range"
+                      data-prop="box.radius"
+                      data-unit="px"
+                      min="0"
+                      max="500"
+                      step="1"
+                    />
+                  </div>
+                  <details class="css">
+                    <summary class="css__title">CSS で見る</summary>
+                    <pre id="css-preview" class="css__code"></pre>
+                  </details>
+                </div>
+              </details>
+
               <details class="group" open>
                 <summary class="group__title">位置と大きさ</summary>
                 <div class="fields">
+                  <p id="laid-out-note" class="note" hidden>
+                    フレームのレイアウトで位置が決まります（X・Y
+                    は変えられません）。
+                  </p>
                   <div class="pair">
                     <label class="field">
                       <span class="field__label">X</span>
@@ -826,7 +1059,7 @@ const icons = {
                       />
                     </label>
                   </div>
-                  <div class="fit" data-for="rect ellipse path">
+                  <div class="fit" data-for="rect ellipse path frame">
                     <span class="field__label">キャンバスに合わせる</span>
                     <div class="fit__buttons">
                       <button
@@ -2013,6 +2246,230 @@ const icons = {
     font-size: 0.8125rem;
   }
 
+  [data-layout][hidden],
+  .button[hidden] {
+    display: none;
+  }
+
+  /* 設定の中の小見出し（文字の書式・段落・効果） */
+  .subhead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-2);
+    margin-top: var(--space-1);
+    padding-top: var(--space-3);
+    border-top: 1px dashed var(--color-border);
+  }
+
+  .subhead__title {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+  }
+
+  /* 書式を適用する範囲 */
+  .scope {
+    padding: 2px var(--space-2);
+    border-radius: 999px;
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+  }
+
+  .scope--partial {
+    background: light-dark(#e8f0fe, #1c2b44);
+    color: var(--color-focus);
+    font-weight: 700;
+  }
+
+  /* フレームの揃え（3 × 3 のボタン） */
+  .layout-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-3);
+  }
+
+  .align-pad {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .align-pad .field__label {
+    margin-bottom: var(--space-1);
+  }
+
+  .align-pad__cells {
+    display: grid;
+    grid-template-columns: repeat(3, 2rem);
+    grid-template-rows: repeat(3, 2rem);
+    padding: 3px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-bg);
+  }
+
+  .align-pad__cell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+
+  .align-pad__input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .align-pad__dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-text-muted);
+    transition:
+      width 0.15s ease-out,
+      height 0.15s ease-out,
+      background-color 0.15s ease-out;
+  }
+
+  .align-pad__cell:hover .align-pad__dot {
+    background: var(--color-text);
+  }
+
+  /* 選んだ位置には、並ぶ向きの棒を出す（横並びは縦の棒が横に、縦並びは横の棒が縦に並ぶ） */
+  .align-pad__input:checked + .align-pad__dot {
+    width: 6px;
+    height: 16px;
+    border-radius: 2px;
+    background: var(--color-focus);
+    box-shadow:
+      -8px 2px 0 -1px var(--color-focus),
+      8px 3px 0 -2px var(--color-focus);
+  }
+
+  .align-pad[data-mode="column"] .align-pad__input:checked + .align-pad__dot {
+    width: 16px;
+    height: 6px;
+    box-shadow:
+      2px -8px 0 -1px var(--color-focus),
+      3px 8px 0 -2px var(--color-focus);
+  }
+
+  .align-pad[data-mode="grid"] .align-pad__input:checked + .align-pad__dot {
+    width: 12px;
+    height: 12px;
+    box-shadow: none;
+  }
+
+  .align-pad__input:focus-visible + .align-pad__dot {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .align-pad__dot {
+      transition: none;
+    }
+  }
+
+  .checks {
+    display: grid;
+  }
+
+  /* 余白（padding）を、ブラウザの開発ツールのボックスモデルの図のように入れる */
+  .boxmodel {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(3.5rem, 1fr) minmax(0, 1.4fr) minmax(
+        3.5rem,
+        1fr
+      );
+    grid-template-rows: auto auto auto;
+    align-items: center;
+    justify-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px dashed light-dark(#b9a36a, #8a7a4e);
+    border-radius: 10px;
+    background: light-dark(#fbf6e8, #2a2618);
+  }
+
+  .boxmodel__name {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    color: light-dark(#7a6630, #c9b67e);
+    font-size: 0.6875rem;
+    font-weight: 700;
+  }
+
+  .boxmodel__input {
+    width: 100%;
+    max-width: 5rem;
+    min-height: 2.25rem;
+    padding: 0 var(--space-1);
+    background: var(--color-surface);
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .boxmodel__input--top {
+    grid-area: 1 / 2;
+  }
+
+  .boxmodel__input--right {
+    grid-area: 2 / 3;
+  }
+
+  .boxmodel__input--bottom {
+    grid-area: 3 / 2;
+  }
+
+  .boxmodel__input--left {
+    grid-area: 2 / 1;
+  }
+
+  .boxmodel__content {
+    grid-area: 2 / 2;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: var(--space-1);
+    border: 1px solid light-dark(#8fb4e8, #3d5f8f);
+    border-radius: 6px;
+    background: light-dark(#e8f0fe, #1c2b44);
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+
+  /* 同じ見た目を CSS で書くと */
+  .css__title {
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+
+  .css__code {
+    margin: var(--space-2) 0 0;
+    padding: var(--space-2) var(--space-3);
+    overflow-x: auto;
+    border-radius: 8px;
+    background: var(--color-bg);
+    font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    white-space: pre;
+  }
+
   /* ---- レイヤー一覧 ---- */
   .layers {
     display: grid;
@@ -2028,10 +2485,12 @@ const icons = {
     display: none;
   }
 
+  /* フレームの中身は、深さの分だけ字下げする */
   .layers :global(.layer) {
     display: flex;
     align-items: center;
     gap: 2px;
+    margin-left: calc(var(--depth, 0) * 1rem);
     border-radius: 8px;
   }
 
@@ -2123,6 +2582,11 @@ const icons = {
 
   .layer-actions .button {
     padding-inline: 0;
+  }
+
+  .layer-actions [data-action="layer-wrap"],
+  .layer-actions [data-action="layer-unwrap"] {
+    grid-column: span 2;
   }
 
   /* ---- ダイアログ ---- */
@@ -2252,25 +2716,37 @@ const icons = {
     text-shadow: 0.04em 0.06em 0.12em rgb(0 0 0 / 0.55);
   }
 
-  /* 入力欄だと分かるように、ほかの入力欄より少し濃い枠と内側の影をつける */
+  /*
+   * パネルの入力欄は、ふつうのテキストエリアと同じ文字で見せる（フォント・色・縁取りはキャンバスで見る）。
+   * 入力欄だと分かるように、ほかの入力欄より少し濃い枠と内側の影をつける
+   */
   #rich {
     position: relative;
-    min-height: 4.5rem;
+    min-height: 5rem;
     max-height: 14rem;
     overflow: auto;
     padding: var(--space-2) var(--space-3);
-    border-color: #b9c0c9;
-    background: #ffffff;
+    border-color: light-dark(#b9c0c9, #4a525c);
+    background: var(--color-surface);
+    color: var(--color-text);
     box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.08);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     transition:
       border-color 0.15s ease-out,
       box-shadow 0.15s ease-out;
   }
 
-  /* 白っぽい文字は暗い背景で見せる */
-  #rich.rich--dark {
-    border-color: #2b3036;
-    background: #2b3036;
+  #rich.rich--plain :global(div) {
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  /* 色が混ざっているときだけ、文字の下にその色の線を引く */
+  #rich.rich--mixed :global(span) {
+    text-decoration: underline 3px var(--run-color, transparent);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 5px;
   }
 
   #rich:hover {
@@ -2295,20 +2771,15 @@ const icons = {
     pointer-events: none;
   }
 
-  /* 揃えに合わせて、カーソルの位置から案内が始まるようにする */
   #rich[data-empty]::before {
     inset: var(--space-2) var(--space-3) auto;
-    text-align: inherit;
+    line-height: 1.6;
   }
 
   .stage-text[data-empty]::before {
     top: 0;
     left: 0;
     color: #5b6470;
-  }
-
-  #rich.rich--dark[data-empty]::before {
-    color: #aab2bc;
   }
 
   /* 編集欄から離れている間も、書式を変える文字の範囲を見せる */
