@@ -11,6 +11,11 @@ export type View = {
   lineHeight: number;
   /** キャンバス上で編集するときは、縁取りと影も見せる */
   effects?: { strokeColor: string; strokeWidth: number; shadow: boolean };
+  /**
+   * 書式を見た目に出さない（パネルの入力欄。読みやすいふつうの文字で見せる）。
+   * 太字だけは出し、色は --run-color で CSS に渡す
+   */
+  plain?: boolean;
 };
 
 const styleOf = (element: Element | null): model.CharStyle | null => {
@@ -30,6 +35,11 @@ const applySpanStyle = (
   view: View,
 ) => {
   span.dataset["style"] = JSON.stringify(style);
+  if (view.plain) {
+    span.style.fontWeight = style.bold ? "700" : "400";
+    span.style.setProperty("--run-color", style.color);
+    return;
+  }
   span.style.fontFamily = fonts.cssFamily(style.font);
   span.style.fontSize = `${style.size * view.scale}px`;
   span.style.fontWeight = style.bold ? "700" : "400";
