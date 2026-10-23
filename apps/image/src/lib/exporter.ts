@@ -137,7 +137,7 @@ export const compress = async (
 
 /**
  * レイヤーを保った PSD。各レイヤーはフィルター込みの画像として書き出す（テキストも画像になる）。
- * 背面のフィルターは、掛けた結果を別のレイヤーにする
+ * 背面のフィルターは、掛けた結果を別のレイヤーにする。フレームはグループにする
  */
 export const psd = async (
   doc: model.Doc,
@@ -156,28 +156,50 @@ export const psd = async (
     context.fillRect(0, 0, doc.width, doc.height);
     children.push({ name: "背景", left: 0, top: 0, canvas });
   }
+  type PsdLayer = import("ag-psd").Layer;
+  // フレームはグループにして、フレームのボックスを一番下、中身をその上に入れる
+  const groups = new Map<string, PsdLayer[]>();
+  const listFor = (layer: model.Layer) =>
+    (layer.parent ? groups.get(layer.parent) : undefined) ?? children;
   for (const [index, layer] of doc.layers.entries()) {
+    const list = listFor(layer);
+    let target = list;
+    if (layer.type === "frame") {
+      const group: PsdLayer = {
+        name: layer.name,
+        opened: true,
+        opacity: layer.opacity / 100,
+        hidden: !layer.visible,
+        children: [],
+      };
+      list.push(group);
+      groups.set(layer.id, group.children!);
+      target = group.children!;
+    }
+    // グループの不透明度は中身にも掛かるので、フレームのボックスは不透明のまま入れる
+    const opacity = layer.type === "frame" ? 1 : layer.opacity / 100;
+    const hidden = layer.type === "frame" ? false : !layer.visible;
     // PSD には背面のフィルターが無いので、掛けた結果を 1 枚のレイヤーにしてすぐ下に置く
     const backdrop = model.hasFilters(layer.backdrop)
       ? cache.backdrop(doc, assets, index, null, doc.background)
       : null;
     if (backdrop)
-      children.push({
+      target.push({
         name: `${layer.name}（背面のフィルター）`,
         left: backdrop.x,
         top: backdrop.y,
         canvas: backdrop.canvas,
-        opacity: layer.opacity / 100,
-        hidden: !layer.visible,
+        opacity,
+        hidden,
       });
     const { canvas, pad } = cache.get(layer, assets);
-    children.push({
-      name: layer.name,
+    target.push({
+      name: layer.type === "frame" ? `${layer.name}（ボックス）` : layer.name,
       left: Math.round(layer.x - pad),
       top: Math.round(layer.y - pad),
       canvas,
-      opacity: layer.opacity / 100,
-      hidden: !layer.visible,
+      opacity,
+      hidden,
     });
   }
   const buffer = agPsd.writePsd(
