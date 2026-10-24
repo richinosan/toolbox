@@ -688,8 +688,15 @@ export const mount = (root: HTMLElement) => {
         context.stroke();
       }
       if (warping) {
+        // 遠近の枠（4 隅のハンドルを結ぶ線）
+        const quad = warpHandles(layer);
+        context.setLineDash([5, 4]);
+        context.beginPath();
+        for (const p of quad) context.lineTo(p.x, p.y);
+        context.closePath();
+        context.stroke();
         context.setLineDash([]);
-        for (const p of warpHandles(layer)) {
+        for (const p of quad) {
           context.beginPath();
           context.rect(p.x - 6, p.y - 6, 12, 12);
           context.fillStyle = "#1a73e8";
@@ -782,7 +789,7 @@ export const mount = (root: HTMLElement) => {
 
   /** 変形の 4 隅のハンドルの位置（画面の px） */
   const warpHandles = (layer: model.Layer) =>
-    warp.handles(layer).map((p) => toScreen(layer.x + p.x, layer.y + p.y));
+    warp.corners(layer).map((p) => toScreen(layer.x + p.x, layer.y + p.y));
 
   const hitWarpCorner = (
     clientX: number,
@@ -2564,7 +2571,9 @@ export const mount = (root: HTMLElement) => {
     const scale = fit[0] / box.width;
     const clips = new Map<string, snap.Box>();
     for (const layer of target.layers)
-      if (layer.type === "image") clips.set(layer.id, imageClip(layer, box));
+      // 変形した画像は、元の枠で切ると形が変わるので切らない
+      if (layer.type === "image" && !model.hasWarp(layer))
+        clips.set(layer.id, imageClip(layer, box));
     const visible = (size: snap.Box) => size.width > 0 && size.height > 0;
     // 描くときの canvas は、ぼかしや縁取りの分だけ外に広がる。それも一緒に拡大される
     const fits = target.layers.every((layer) => {
