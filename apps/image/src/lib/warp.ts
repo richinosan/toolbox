@@ -584,7 +584,11 @@ const draw2d = (source: HTMLCanvasElement, mesh: Mesh) => {
       b += src[k + 2]! * alpha;
       a += alpha;
     }
-    if (a <= 0) return;
+    // 透明なところも書き込む（折り返して重なった三角形では、先に書いた色を消す）
+    if (a <= 0) {
+      dst[at] = dst[at + 1] = dst[at + 2] = dst[at + 3] = 0;
+      return;
+    }
     dst[at] = r / a;
     dst[at + 1] = g / a;
     dst[at + 2] = b / a;

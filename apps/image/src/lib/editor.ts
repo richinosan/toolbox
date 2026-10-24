@@ -427,11 +427,16 @@ export const mount = (root: HTMLElement) => {
   let lastTap: { id: string; time: number } | null = null;
   /** トリミング中の枠（ドキュメントの座標）。トリミングしていないときは null */
   let crop: snap.Box | null = null;
-  /** 選択中のレイヤーの 4 隅をドラッグして変形しているところか */
-  let warping = false;
+  /** 4 隅をドラッグして変形しているレイヤー（選択が変わったら終わる） */
+  let warpingId: string | null = null;
 
   const selected = () =>
     doc?.layers.find((layer) => layer.id === selectedId) ?? null;
+  /** 選択中のレイヤーの 4 隅をドラッグして変形しているところか（ほかの操作で選択が変わったら終わる） */
+  const isWarping = () =>
+    warpingId !== null &&
+    warpingId === selectedId &&
+    selected()?.type !== "frame";
   const isDirty = () => doc !== null && historyIndex !== savedIndex;
 
   // ---- 通知 ----
@@ -677,7 +682,7 @@ export const mount = (root: HTMLElement) => {
       context.strokeStyle = "#1a73e8";
       context.lineWidth = 1.5;
       context.setLineDash(layer.visible ? [] : [4, 4]);
-      if (model.hasWarp(layer) || warping) {
+      if (model.hasWarp(layer) || isWarping()) {
         // 変形した形の輪郭
         context.beginPath();
         for (const point of warp.outline(layer)) {
@@ -687,7 +692,7 @@ export const mount = (root: HTMLElement) => {
         context.closePath();
         context.stroke();
       }
-      if (warping) {
+      if (isWarping()) {
         // 遠近の枠（4 隅のハンドルを結ぶ線）
         const quad = warpHandles(layer);
         context.setLineDash([5, 4]);
@@ -797,7 +802,7 @@ export const mount = (root: HTMLElement) => {
     touch: boolean,
   ): model.Corner | null => {
     const layer = selected();
-    if (!layer || !warping) return null;
+    if (!layer || !isWarping()) return null;
     const rect = stage.getBoundingClientRect();
     const px = clientX - rect.left;
     const py = clientY - rect.top;
@@ -813,7 +818,7 @@ export const mount = (root: HTMLElement) => {
 
   const hitHandle = (clientX: number, clientY: number, touch: boolean) => {
     const layer = selected();
-    if ((!layer && !crop) || (warping && !crop)) return null;
+    if ((!layer && !crop) || (isWarping() && !crop)) return null;
     const rect = stage.getBoundingClientRect();
     const px = clientX - rect.left;
     const py = clientY - rect.top;
@@ -1385,7 +1390,7 @@ export const mount = (root: HTMLElement) => {
     if (editingId && editingId !== id) finishEditing();
     if (id !== selectedId) {
       charRange = null;
-      warping = false;
+      warpingId = null;
     }
     selectedId = id;
     renderLayerList();
@@ -1656,16 +1661,16 @@ export const mount = (root: HTMLElement) => {
     $<HTMLElement>(props, "#warp-bend").hidden = layer.warp.style === "none";
     $<HTMLElement>(props, '[data-action="warp-edit"]').setAttribute(
       "aria-pressed",
-      String(warping),
+      String(isWarping()),
     );
-    $<HTMLElement>(props, "#warp-edit-note").hidden = !warping;
+    $<HTMLElement>(props, "#warp-edit-note").hidden = !isWarping();
   }
 
   /** 4 隅のドラッグでの変形を始める・終える */
-  const toggleWarp = (on = !warping) => {
+  const toggleWarp = (on = !isWarping()) => {
     const layer = selected();
-    warping = on && layer !== null && layer.type !== "frame";
-    if (warping) finishEditing();
+    warpingId = on && layer && layer.type !== "frame" ? layer.id : null;
+    if (warpingId) finishEditing();
     if (layer) syncWarpPanel(layer);
     requestDraw();
   };
@@ -2521,7 +2526,7 @@ export const mount = (root: HTMLElement) => {
       cancelCrop();
       return;
     }
-    warping = false;
+    warpingId = null;
     finishEditing();
     selectedId = null;
     renderLayerList();
@@ -3312,7 +3317,7 @@ export const mount = (root: HTMLElement) => {
       }
       // 4 隅を動かしているときは、Enter・Esc で終わる
       if (
-        warping &&
+        isWarping() &&
         !mod &&
         (key === "enter" || key === "escape") &&
         !(
