@@ -232,8 +232,8 @@ export const renderLayer = (
   let left = pad;
   let top = pad;
   if (warped) {
-    const result = warp.apply(layer, canvas, pad);
     const spread = blurPadding(layer);
+    const result = warp.apply(layer, canvas, pad, spread);
     canvas = document.createElement("canvas");
     canvas.width = result.canvas.width + spread * 2;
     canvas.height = result.canvas.height + spread * 2;
