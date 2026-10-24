@@ -30,8 +30,11 @@ const tiltCorners = (warp: model.Warp, width: number, height: number) => {
   });
 };
 
-/** 変形した先の 4 隅（レイヤーの左上を原点にした px） */
-const corners = (layer: model.Layer): Point[] =>
+/**
+ * 遠近の枠の 4 隅（レイヤーの左上を原点にした px）。曲げは、この枠の中で掛かる。
+ * 4 隅を動かすハンドルはここに置く（曲げた形の角は曲げ方によって枠の外や内に来るので、ハンドルにはしない）
+ */
+export const corners = (layer: model.Layer): Point[] =>
   tiltCorners(layer.warp, layer.width, layer.height).map((point, i) => ({
     x: (point.x + layer.warp.corners[i]![0]) * layer.width,
     y: (point.y + layer.warp.corners[i]![1]) * layer.height,
@@ -41,52 +44,17 @@ const corners = (layer: model.Layer): Point[] =>
 const clampOffset = (value: number) =>
   Math.round(model.clamp(value, -2, 2) * 10_000) / 10_000;
 
-/** 枠の 4 隅が、変形した先で来る位置（レイヤーの左上を原点にした px。ハンドルを置く位置） */
-export const handles = (layer: model.Layer): Point[] => {
-  const map = mapper(layer);
-  return [
-    map(0, 0),
-    map(layer.width, 0),
-    map(layer.width, layer.height),
-    map(0, layer.height),
-  ];
-};
-
-/**
- * 枠の隅が at（レイヤーの左上を原点にした px）に来るような、その隅の移動量。
- * 曲げを掛けていると隅の位置は移動量にぴったり比例しないので、少しずつ近づける
- */
+/** 4 隅の位置（レイヤーの左上を原点にした px）から、その隅の移動量を逆算する */
 export const cornerOffset = (
   layer: model.Layer,
   corner: model.Corner,
   at: Point,
 ) => {
-  const trial: model.Layer = structuredClone(layer);
-  const errorOf = (offset: [number, number]) => {
-    trial.warp.corners[corner] = offset;
-    const p = handles(trial)[corner]!;
-    return { dx: at.x - p.x, dy: at.y - p.y };
-  };
-  let best = layer.warp.corners[corner]!;
-  let error = errorOf(best);
-  // 行き過ぎて離れたら、動かす量を半分にする
-  let step = 1;
-  for (let i = 0; i < 24 && Math.hypot(error.dx, error.dy) >= 0.05; i++) {
-    const next: [number, number] = [
-      best[0] + (error.dx / layer.width) * step,
-      best[1] + (error.dy / layer.height) * step,
-    ];
-    const nextError = errorOf(next);
-    if (
-      Math.hypot(nextError.dx, nextError.dy) < Math.hypot(error.dx, error.dy)
-    ) {
-      best = next;
-      error = nextError;
-    } else step /= 2;
-  }
-  trial.warp.corners[corner] = best;
-  const [x, y] = trial.warp.corners[corner]!;
-  return [clampOffset(x), clampOffset(y)] as [number, number];
+  const base = tiltCorners(layer.warp, layer.width, layer.height)[corner]!;
+  return [
+    clampOffset(at.x / layer.width - base.x),
+    clampOffset(at.y / layer.height - base.y),
+  ] as [number, number];
 };
 
 /** 単位正方形を 4 隅へ移す射影変換（3×3 行列の 8 個の係数） */
