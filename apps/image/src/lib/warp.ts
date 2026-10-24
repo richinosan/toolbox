@@ -221,6 +221,30 @@ export const outline = (layer: model.Layer, steps = 24): Point[] => {
   return points;
 };
 
+/**
+ * ドキュメントの点 (x, y) が、変形したレイヤーの枠の中に入るか（当たり判定）。
+ * 4 隅を内側に寄せると形が折り返して輪郭の外にも描かれるので、輪郭ではなく網目の三角形で調べる
+ */
+export const hits = (layer: model.Layer, x: number, y: number, steps = 16) => {
+  const map = mapper(layer);
+  const grid: Point[] = [];
+  for (let j = 0; j <= steps; j++)
+    for (let i = 0; i <= steps; i++) {
+      const p = map((i / steps) * layer.width, (j / steps) * layer.height);
+      grid.push({ x: layer.x + p.x, y: layer.y + p.y });
+    }
+  const at = (i: number, j: number) => grid[j * (steps + 1) + i]!;
+  for (let j = 0; j < steps; j++)
+    for (let i = 0; i < steps; i++) {
+      const a = at(i, j);
+      const b = at(i + 1, j);
+      const c = at(i + 1, j + 1);
+      const d = at(i, j + 1);
+      if (contains([a, b, c], x, y) || contains([a, c, d], x, y)) return true;
+    }
+  return false;
+};
+
 /** 点が多角形の内側にあるか */
 export const contains = (polygon: Point[], x: number, y: number) => {
   let inside = false;
