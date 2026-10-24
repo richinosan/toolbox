@@ -287,14 +287,19 @@ const buildMesh = (
       maxX = Math.max(maxX, p.x);
       maxY = Math.max(maxY, p.y);
     }
-  // 出力の canvas が上限を超えないよう、レイヤーの中心のまわりに収める
-  const cx = layer.width / 2;
-  const cy = layer.height / 2;
-  const half = model.MAX_SIDE / 2;
-  minX = Math.floor(Math.max(minX, cx - half)) - 1;
-  minY = Math.floor(Math.max(minY, cy - half)) - 1;
-  maxX = Math.ceil(Math.min(maxX, cx + half)) + 1;
-  maxY = Math.ceil(Math.min(maxY, cy + half)) + 1;
+  // 出力の canvas が上限を超えるときだけ、変形した範囲の中心のまわりに収める
+  const half = model.MAX_SIDE / 2 - 2;
+  const fit = (min: number, max: number) => {
+    if (max - min <= half * 2) return [min, max] as const;
+    const center = (min + max) / 2;
+    return [center - half, center + half] as const;
+  };
+  [minX, maxX] = fit(minX, maxX);
+  [minY, maxY] = fit(minY, maxY);
+  minX = Math.floor(minX) - 1;
+  minY = Math.floor(minY) - 1;
+  maxX = Math.ceil(maxX) + 1;
+  maxY = Math.ceil(maxY) + 1;
   let width = Math.max(1, maxX - minX);
   let height = Math.max(1, maxY - minY);
   const area = Math.sqrt(model.MAX_AREA / (width * height));
