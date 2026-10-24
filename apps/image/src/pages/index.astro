@@ -1097,6 +1097,90 @@ const icons = {
                 </div>
               </details>
 
+              <details class="group" data-for="text image rect ellipse path">
+                <summary class="group__title">空間変形</summary>
+                <div class="fields">
+                  <p class="note">
+                    文字や画像を奥に倒したり、曲げたりします。文字は変形したまま打ち直せます（打っている間は元の形で表示します）。
+                  </p>
+                  {[
+                    ["tiltX", "縦に倒す"],
+                    ["tiltY", "横に倒す"],
+                  ].map(([key, label]) => (
+                    <div class="range">
+                      <label class="field__label" for={`prop-warp-${key}`}>
+                        {label}
+                      </label>
+                      <output for={`prop-warp-${key}`} />
+                      <input
+                        id={`prop-warp-${key}`}
+                        class="range__input"
+                        type="range"
+                        data-prop={`warp.${key}`}
+                        data-unit="°"
+                        min="-70"
+                        max="70"
+                        step="1"
+                      />
+                    </div>
+                  ))}
+                  <fieldset class="chips">
+                    <legend class="field__label">曲げ方</legend>
+                    <div class="chips__options">
+                      {model.warpStyles.map(([value, label]) => (
+                        <label class="chip">
+                          <input
+                            class="chip__input"
+                            type="radio"
+                            name="warp-style"
+                            value={value}
+                            data-prop="warp.style"
+                          />
+                          <span class="chip__label">{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <div class="range" id="warp-bend">
+                    <label class="field__label" for="prop-warp-bend">
+                      曲げの強さ
+                    </label>
+                    <output for="prop-warp-bend"></output>
+                    <input
+                      id="prop-warp-bend"
+                      class="range__input"
+                      type="range"
+                      data-prop="warp.bend"
+                      data-unit="%"
+                      min="-100"
+                      max="100"
+                      step="1"
+                    />
+                  </div>
+                  <div class="fit__buttons">
+                    <button
+                      class="button button--small warp-edit"
+                      type="button"
+                      data-action="warp-edit"
+                      aria-pressed="false"
+                    >
+                      4 隅を動かす
+                    </button>
+                    <button
+                      class="button button--small"
+                      type="button"
+                      data-action="reset-warp"
+                    >
+                      元の形に戻す
+                    </button>
+                  </div>
+                  <p id="warp-edit-note" class="note" hidden>
+                    キャンバスの四角いハンドルをドラッグします。Enter か Esc
+                    で終わります。
+                  </p>
+                </div>
+              </details>
+
               <details class="group" open>
                 <summary class="group__title">フィルター</summary>
                 <div class="fields">
@@ -2637,6 +2721,7 @@ const icons = {
     display: none;
   }
 
+  .warp-edit[aria-pressed="true"],
   [data-limit][aria-pressed="true"] {
     border-color: var(--color-accent);
     background: var(--color-accent-soft);

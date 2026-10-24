@@ -3,6 +3,7 @@ import * as filters from "./filters";
 import * as fonts from "./fonts";
 import * as model from "./model";
 import * as text from "./text";
+import * as warp from "./warp";
 
 /**
  * テキストの内容や大きさが変わったとき、枠の大きさを測り直す。
@@ -132,25 +133,31 @@ const drawBox = (
 
 export type Rendered = {
   canvas: HTMLCanvasElement;
-  /** canvas の左上がレイヤーの左上からどれだけ外側にあるか */
-  pad: number;
+  /** canvas の左上が、レイヤーの左上から左・上にどれだけ外側にあるか */
+  left: number;
+  top: number;
 };
 
-/** レイヤーを描く canvas が、レイヤーの枠からどれだけ外に広がるか（ぼかし・縁取りなど） */
-export const layerPadding = (layer: model.Layer) => {
-  // 画像はぼかしても枠の外に広げない（ボックスを付けた画像は、図形と同じように広げる）
-  const blurPad =
-    layer.type === "image" && !model.boxVisible(layer.box)
-      ? 0
-      : filters.blurPadding(layer.filters.blur);
-  return (
-    (layer.type === "text"
-      ? textPad(layer, text.maxSize(layer.runs))
-      : layer.type === "path"
-        ? textPad(layer, pathSize(layer))
-        : 0) + blurPad
-  );
-};
+/** 中身（縁取り・影）が、レイヤーの枠からどれだけ外にはみ出すか */
+const contentPadding = (layer: model.Layer) =>
+  layer.type === "text"
+    ? textPad(layer, text.maxSize(layer.runs))
+    : layer.type === "path"
+      ? textPad(layer, pathSize(layer))
+      : 0;
+
+/** ぼかしで枠の外に広がる分 */
+const blurPadding = (layer: model.Layer) =>
+  // 画像はぼかしても枠の外に広げない（ボックスを付けた画像や、変形した画像は、図形と同じように広げる）
+  layer.type === "image" &&
+  !model.boxVisible(layer.box) &&
+  !model.hasWarp(layer)
+    ? 0
+    : filters.blurPadding(layer.filters.blur);
+
+/** レイヤーを描く canvas が、レイヤーの枠からどれだけ外に広がるか（ぼかし・縁取りなど。変形の分は含まない） */
+export const layerPadding = (layer: model.Layer) =>
+  contentPadding(layer) + blurPadding(layer);
 
 /**
  * レイヤー 1 枚をフィルター込みで描く（位置・不透明度・表示は含まない）。
@@ -160,11 +167,13 @@ export const renderLayer = (
   layer: model.Layer,
   assets: model.Assets,
 ): Rendered => {
-  const pad = layerPadding(layer);
-  const canvas = document.createElement("canvas");
+  const warped = model.hasWarp(layer);
+  // 変形するときは、変形してからぼかす（ぼかしの広がりは、変形した後の大きさで取る）
+  const pad = warped ? contentPadding(layer) : layerPadding(layer);
+  let canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(layer.width) + pad * 2);
   canvas.height = Math.max(1, Math.round(layer.height) + pad * 2);
-  const context = canvas.getContext("2d", { willReadFrequently: false })!;
+  let context = canvas.getContext("2d", { willReadFrequently: false })!;
   context.imageSmoothingQuality = "high";
   drawBox(context, layer, pad, pad);
   const inset = model.insets(layer);
@@ -220,6 +229,19 @@ export const renderLayer = (
   } else {
     drawShape(context, layer, pad, pad);
   }
+  let left = pad;
+  let top = pad;
+  if (warped) {
+    const result = warp.apply(layer, canvas, pad);
+    const spread = blurPadding(layer);
+    canvas = document.createElement("canvas");
+    canvas.width = result.canvas.width + spread * 2;
+    canvas.height = result.canvas.height + spread * 2;
+    context = canvas.getContext("2d")!;
+    context.drawImage(result.canvas, spread, spread);
+    left = result.left + spread;
+    top = result.top + spread;
+  }
   if (model.hasFilters(layer.filters)) {
     const image = context.getImageData(0, 0, canvas.width, canvas.height);
     filters.applyColor(image.data, filters.colorMatrix(layer.filters));
@@ -231,7 +253,7 @@ export const renderLayer = (
     );
     context.putImageData(image, 0, 0);
   }
-  return { canvas, pad };
+  return { canvas, left, top };
 };
 
 /** 描画結果に影響する値だけを並べたキー（位置・不透明度・名前・親・背面のフィルターは含まない） */
@@ -355,6 +377,24 @@ const drawBackdropMask = (
   if (layer.type === "frame") {
     boxPath(context, ox, oy, layer.width, layer.height, layer.box.radius);
     context.fill();
+  } else if (
+    (layer.type === "rect" || layer.type === "ellipse") &&
+    model.hasWarp(layer)
+  ) {
+    // 変形した図形は、形を描いてから同じように変形する
+    const shape = document.createElement("canvas");
+    shape.width = Math.max(1, Math.round(layer.width));
+    shape.height = Math.max(1, Math.round(layer.height));
+    const shapeContext = shape.getContext("2d")!;
+    drawBackdropMask(
+      shapeContext,
+      { ...layer, warp: model.defaultWarp() },
+      rendered,
+      0,
+      0,
+    );
+    const result = warp.apply(layer, shape, 0);
+    context.drawImage(result.canvas, ox - result.left, oy - result.top);
   } else if (layer.type === "rect" || layer.type === "ellipse") {
     context.beginPath();
     if (layer.type === "ellipse") {
@@ -374,7 +414,7 @@ const drawBackdropMask = (
     context.fill();
   } else {
     // 画像・テキスト・パスは、描いた絵の不透明な部分
-    context.drawImage(rendered.canvas, ox - rendered.pad, oy - rendered.pad);
+    context.drawImage(rendered.canvas, ox - rendered.left, oy - rendered.top);
   }
 };
 
@@ -392,15 +432,15 @@ const renderBackdrop = (
   background: string | null,
 ): Backdrop | null => {
   const layer = doc.layers[index]!;
-  const left = Math.max(0, Math.floor(layer.x - rendered.pad));
-  const top = Math.max(0, Math.floor(layer.y - rendered.pad));
+  const left = Math.max(0, Math.floor(layer.x - rendered.left));
+  const top = Math.max(0, Math.floor(layer.y - rendered.top));
   const right = Math.min(
     doc.width,
-    Math.ceil(layer.x - rendered.pad + rendered.canvas.width),
+    Math.ceil(layer.x - rendered.left + rendered.canvas.width),
   );
   const bottom = Math.min(
     doc.height,
-    Math.ceil(layer.y - rendered.pad + rendered.canvas.height),
+    Math.ceil(layer.y - rendered.top + rendered.canvas.height),
   );
   if (right <= left || bottom <= top) return null;
   const spread = filters.blurPadding(layer.backdrop.blur);
@@ -457,8 +497,8 @@ const drawStack = (
       if (backdrop) context.drawImage(backdrop.canvas, backdrop.x, backdrop.y);
     }
     if (layer.id === hidden) return;
-    const { canvas, pad } = cache.get(layer, assets);
-    context.drawImage(canvas, layer.x - pad, layer.y - pad);
+    const { canvas, left, top } = cache.get(layer, assets);
+    context.drawImage(canvas, layer.x - left, layer.y - top);
   });
   context.globalAlpha = 1;
 };

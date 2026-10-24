@@ -50,6 +50,51 @@ export const defaultFilters: Filters = {
   blur: 0,
 };
 
+/** 曲げ方（Photoshop のワープの「スタイル」のようなもの） */
+export type WarpStyle =
+  "none" | "arc" | "arch" | "bulge" | "flag" | "wave" | "rise";
+
+export const warpStyles: readonly (readonly [WarpStyle, string])[] = [
+  ["none", "なし"],
+  ["arc", "円弧"],
+  ["arch", "アーチ"],
+  ["bulge", "膨張"],
+  ["flag", "旗"],
+  ["wave", "波"],
+  ["rise", "上昇"],
+];
+
+/** 4 隅の順番（左上・右上・右下・左下） */
+export type Corner = 0 | 1 | 2 | 3;
+
+/**
+ * 空間変形。描くときに、曲げ → 奥行きの傾き → 4 隅の移動 の順に掛ける（元の文字や画像はそのまま持つ）
+ */
+export type Warp = {
+  /** 横の軸で奥に倒す角度（度。正で上が奥に下がる） */
+  tiltX: number;
+  /** 縦の軸で奥に倒す角度（度。正で右が奥に下がる） */
+  tiltY: number;
+  style: WarpStyle;
+  /** 曲げの強さ -100〜100 */
+  bend: number;
+  /** 4 隅を動かす量（左上・右上・右下・左下の順。枠の幅・高さに対する割合） */
+  corners: [number, number][];
+};
+
+export const defaultWarp = (): Warp => ({
+  tiltX: 0,
+  tiltY: 0,
+  style: "none",
+  bend: 0,
+  corners: [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+});
+
 type LayerBase = {
   id: string;
   /**
@@ -71,6 +116,8 @@ type LayerBase = {
    * レイヤーの形の範囲だけ、下に重なっている絵にフィルターを掛けてから、その上にレイヤーを描く
    */
   backdrop: Filters;
+  /** 空間変形（フレームには掛けない） */
+  warp: Warp;
 };
 
 /** 上・右・下・左（CSS の padding と同じ順） */
@@ -287,6 +334,7 @@ const base = (
   height,
   filters: { ...defaultFilters },
   backdrop: { ...defaultFilters },
+  warp: defaultWarp(),
 });
 
 /** 同じ種類のレイヤーの数から「テキスト 2」のような名前を付ける */
@@ -515,6 +563,14 @@ export const fitSize = (width: number, height: number) => {
     scaled: scale < 1,
   };
 };
+
+/** 空間変形が掛かっているか */
+export const hasWarp = (layer: Layer) =>
+  layer.type !== "frame" &&
+  (layer.warp.tiltX !== 0 ||
+    layer.warp.tiltY !== 0 ||
+    (layer.warp.style !== "none" && layer.warp.bend !== 0) ||
+    layer.warp.corners.some(([x, y]) => x !== 0 || y !== 0));
 
 export const hasFilters = (filters: Filters) =>
   filters.preset !== "none" ||
