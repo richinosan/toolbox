@@ -8,7 +8,7 @@ import * as text from "./text";
 export const EXTENSION = ".tbimg";
 const FORMAT = "toolbox-image";
 /** 2: フレームとボックス（parent・box・layout）を追加 */
-const VERSION = 2;
+const VERSION = 3;
 const MIME = "application/x-toolbox-image";
 
 type Writable = {
@@ -217,6 +217,28 @@ const readLayout = (value: unknown): model.FrameLayout => {
   };
 };
 
+const readWarp = (value: unknown): model.Warp => {
+  const w = isObject(value) ? value : {};
+  const d = model.defaultWarp();
+  const corners = Array.isArray(w["corners"]) ? w["corners"] : [];
+  return {
+    tiltX: num(w["tiltX"], 0, -80, 80),
+    tiltY: num(w["tiltY"], 0, -80, 80),
+    style: oneOf(
+      w["style"],
+      model.warpStyles.map(([key]) => key),
+      d.style,
+    ),
+    bend: num(w["bend"], 0, -100, 100),
+    corners: d.corners.map((_, i) => {
+      const c: unknown = corners[i];
+      return Array.isArray(c)
+        ? [num(c[0], 0, -2, 2), num(c[1], 0, -2, 2)]
+        : [0, 0];
+    }),
+  };
+};
+
 const readLayer = (
   value: unknown,
   assetIds: Set<string>,
@@ -235,6 +257,7 @@ const readLayer = (
     height: int(value["height"], 100, 1, model.MAX_SIDE * 4),
     filters: readFilters(value["filters"]),
     backdrop: readFilters(value["backdrop"]),
+    warp: readWarp(value["warp"]),
   };
   switch (value["type"]) {
     case "image": {
