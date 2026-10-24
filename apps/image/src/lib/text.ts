@@ -259,6 +259,16 @@ export const scalePath = (d: string, scale: number) =>
     String(Math.round(Number(value) * scale * 100) / 100),
   );
 
+/** パスの座標をすべて (dx, dy) だけずらす（数は x, y の順に並ぶ） */
+export const translatePath = (d: string, dx: number, dy: number) => {
+  let index = 0;
+  return d.replace(/-?[\d.]+(?:e-?\d+)?/g, (value) =>
+    String(
+      Math.round((Number(value) + (index++ % 2 === 0 ? dx : dy)) * 100) / 100,
+    ),
+  );
+};
+
 /** 拡大・縮小したテキストに合わせて、保存されたパスも拡大・縮小する */
 export const scaleOutline = (
   outline: model.TextOutline,

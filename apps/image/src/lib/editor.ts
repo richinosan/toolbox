@@ -2114,25 +2114,35 @@ export const mount = (root: HTMLElement) => {
       );
       return;
     }
-    // ボックス（余白・背景・枠線）は無くなるので、文字の位置に合わせる
+    // ボックス（余白・背景・枠線）は無くなるので、文字の位置に合わせる。
+    // ただし空間変形はテキストの枠の大きさを基準にしているので、変形しているときは枠をそのまま残し、文字をずらす
     const inset = model.insets(layer);
+    const keepBox = model.hasWarp(layer);
+    const width = keepBox ? layer.width : shape.width;
+    const height = keepBox ? layer.height : shape.height;
+    const parts = keepBox
+      ? shape.parts.map((part) => ({
+          ...part,
+          d: text.translatePath(part.d, inset.left, inset.top),
+        }))
+      : shape.parts;
     const path: model.PathLayer = {
       id: layer.id,
       parent: layer.parent,
       name: layer.name,
       visible: layer.visible,
       opacity: layer.opacity,
-      x: layer.x + inset.left,
-      y: layer.y + inset.top,
-      width: shape.width,
-      height: shape.height,
+      x: keepBox ? layer.x : layer.x + inset.left,
+      y: keepBox ? layer.y : layer.y + inset.top,
+      width,
+      height,
       filters: layer.filters,
       backdrop: layer.backdrop,
       warp: layer.warp,
       type: "path",
-      baseWidth: shape.width,
-      baseHeight: shape.height,
-      parts: shape.parts,
+      baseWidth: width,
+      baseHeight: height,
+      parts,
       size: text.maxSize(layer.runs),
       strokeColor: layer.strokeColor,
       strokeWidth: layer.strokeWidth,
