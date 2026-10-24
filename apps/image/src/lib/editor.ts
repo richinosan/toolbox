@@ -14,6 +14,7 @@ import * as render from "./render";
 import * as richedit from "./richedit";
 import * as snap from "./snap";
 import * as text from "./text";
+import * as warp from "./warp";
 
 const HISTORY_LIMIT = 100;
 /** スナップが効く距離（画面上の px） */
@@ -47,6 +48,12 @@ type Drag =
       startX: number;
       startY: number;
       origin: model.Layer;
+      before: model.Layer[];
+    }
+  | {
+      kind: "warp";
+      id: string;
+      corner: model.Corner;
       before: model.Layer[];
     }
   | {
@@ -420,6 +427,8 @@ export const mount = (root: HTMLElement) => {
   let lastTap: { id: string; time: number } | null = null;
   /** トリミング中の枠（ドキュメントの座標）。トリミングしていないときは null */
   let crop: snap.Box | null = null;
+  /** 選択中のレイヤーの 4 隅をドラッグして変形しているところか */
+  let warping = false;
 
   const selected = () =>
     doc?.layers.find((layer) => layer.id === selectedId) ?? null;
@@ -668,6 +677,31 @@ export const mount = (root: HTMLElement) => {
       context.strokeStyle = "#1a73e8";
       context.lineWidth = 1.5;
       context.setLineDash(layer.visible ? [] : [4, 4]);
+      if (model.hasWarp(layer) || warping) {
+        // 変形した形の輪郭
+        context.beginPath();
+        for (const point of warp.outline(layer)) {
+          const p = toScreen(point.x, point.y);
+          context.lineTo(p.x, p.y);
+        }
+        context.closePath();
+        context.stroke();
+      }
+      if (warping) {
+        context.setLineDash([]);
+        for (const p of warpHandles(layer)) {
+          context.beginPath();
+          context.rect(p.x - 6, p.y - 6, 12, 12);
+          context.fillStyle = "#1a73e8";
+          context.fill();
+          context.strokeStyle = "#ffffff";
+          context.stroke();
+        }
+        context.restore();
+        return;
+      }
+      // 変形しているときは、元の枠を薄く出す（ハンドルで大きさを変えるのは元の枠）
+      if (model.hasWarp(layer)) context.globalAlpha = 0.45;
       context.strokeRect(box.x, box.y, box.width, box.height);
       context.setLineDash([]);
       for (const handle of handlesFor(layer)) {
@@ -731,6 +765,10 @@ export const mount = (root: HTMLElement) => {
     for (let i = doc.layers.length - 1; i >= 0; i--) {
       const layer = doc.layers[i]!;
       if (!shown.get(layer.id)!.visible) continue;
+      if (model.hasWarp(layer)) {
+        if (warp.contains(warp.outline(layer), x, y)) return layer;
+        continue;
+      }
       if (
         x >= layer.x - tolerance &&
         x <= layer.x + layer.width + tolerance &&
@@ -742,9 +780,33 @@ export const mount = (root: HTMLElement) => {
     return null;
   };
 
+  /** 変形の 4 隅のハンドルの位置（画面の px） */
+  const warpHandles = (layer: model.Layer) =>
+    warp.handles(layer).map((p) => toScreen(layer.x + p.x, layer.y + p.y));
+
+  const hitWarpCorner = (
+    clientX: number,
+    clientY: number,
+    touch: boolean,
+  ): model.Corner | null => {
+    const layer = selected();
+    if (!layer || !warping) return null;
+    const rect = stage.getBoundingClientRect();
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const radius = touch ? 22 : 11;
+    let best: { corner: model.Corner; distance: number } | null = null;
+    warpHandles(layer).forEach((p, i) => {
+      const distance = Math.hypot(p.x - px, p.y - py);
+      if (distance <= radius && (!best || distance < best.distance))
+        best = { corner: i as model.Corner, distance };
+    });
+    return (best as { corner: model.Corner } | null)?.corner ?? null;
+  };
+
   const hitHandle = (clientX: number, clientY: number, touch: boolean) => {
     const layer = selected();
-    if (!layer && !crop) return null;
+    if ((!layer && !crop) || (warping && !crop)) return null;
     const rect = stage.getBoundingClientRect();
     const px = clientX - rect.left;
     const py = clientY - rect.top;
@@ -944,7 +1006,11 @@ export const mount = (root: HTMLElement) => {
 
   /** ドラッグを取り消して、動かす前の状態に戻す（2 本目の指が触れたとき） */
   const cancelLayerDrag = () => {
-    if (!doc || !drag || (drag.kind !== "move" && drag.kind !== "resize"))
+    if (
+      !doc ||
+      !drag ||
+      (drag.kind !== "move" && drag.kind !== "resize" && drag.kind !== "warp")
+    )
       return;
     doc.layers = drag.before;
     guides = { xs: [], ys: [] };
@@ -993,7 +1059,11 @@ export const mount = (root: HTMLElement) => {
     drag = null;
     guides = { xs: [], ys: [] };
     // 動かしたところまでは確定する
-    if (finished.kind === "move" || finished.kind === "resize") {
+    if (
+      finished.kind === "move" ||
+      finished.kind === "resize" ||
+      finished.kind === "warp"
+    ) {
       commit();
       syncPanel();
     }
@@ -1048,6 +1118,20 @@ export const mount = (root: HTMLElement) => {
       }
     }
     const current = selected();
+    const corner = hitWarpCorner(
+      event.clientX,
+      event.clientY,
+      event.pointerType !== "mouse",
+    );
+    if (corner !== null && current) {
+      drag = {
+        kind: "warp",
+        id: current.id,
+        corner,
+        before: structuredClone(doc.layers),
+      };
+      return;
+    }
     if (handle && current) {
       drag = {
         kind: "resize",
@@ -1090,6 +1174,10 @@ export const mount = (root: HTMLElement) => {
     if (!drag) {
       // ハンドルの上ではカーソルを変える
       if (event.pointerType === "mouse" && doc) {
+        if (hitWarpCorner(event.clientX, event.clientY, false) !== null) {
+          stage.style.cursor = "crosshair";
+          return;
+        }
         const handle = hitHandle(event.clientX, event.clientY, false);
         const point = toDoc(event.clientX, event.clientY);
         const inCrop =
@@ -1168,6 +1256,16 @@ export const mount = (root: HTMLElement) => {
       requestDraw();
       return;
     }
+    if (drag.kind === "warp") {
+      const layer = selected();
+      if (!layer) return;
+      layer.warp.corners[drag.corner] = warp.cornerOffset(layer, drag.corner, {
+        x: point.x - layer.x,
+        y: point.y - layer.y,
+      });
+      requestDraw();
+      return;
+    }
     if (drag.kind === "move") {
       const distance =
         Math.hypot(point.x - drag.startX, point.y - drag.startY) * camera.scale;
@@ -1210,7 +1308,11 @@ export const mount = (root: HTMLElement) => {
     const finished = drag;
     drag = null;
     guides = { xs: [], ys: [] };
-    if (finished.kind === "move" || finished.kind === "resize") {
+    if (
+      finished.kind === "move" ||
+      finished.kind === "resize" ||
+      finished.kind === "warp"
+    ) {
       commit();
       syncPanel();
     }
@@ -1222,7 +1324,10 @@ export const mount = (root: HTMLElement) => {
     if (pointers.has(event.pointerId)) dropPointer(event.pointerId);
   });
   stage.addEventListener("pointercancel", (event) => {
-    if (drag && (drag.kind === "move" || drag.kind === "resize"))
+    if (
+      drag &&
+      (drag.kind === "move" || drag.kind === "resize" || drag.kind === "warp")
+    )
       cancelLayerDrag();
     drag = null;
     endPointer(event);
@@ -1271,7 +1376,10 @@ export const mount = (root: HTMLElement) => {
   const select = (id: string | null) => {
     if (crop && id !== null) cancelCrop();
     if (editingId && editingId !== id) finishEditing();
-    if (id !== selectedId) charRange = null;
+    if (id !== selectedId) {
+      charRange = null;
+      warping = false;
+    }
     selectedId = id;
     renderLayerList();
     syncPanel();
@@ -1531,9 +1639,38 @@ export const mount = (root: HTMLElement) => {
     }
     if (layer.type === "path")
       pathFill.value = layer.parts[0]?.color ?? "#ffffff";
+    syncWarpPanel(layer);
     for (const input of strokeNoneInputs())
       input.checked = "strokeWidth" in layer && layer.strokeWidth === 0;
   }
+
+  /** 空間変形の欄（曲げ方を選んでいないときは強さを隠す） */
+  function syncWarpPanel(layer: model.Layer) {
+    $<HTMLElement>(props, "#warp-bend").hidden = layer.warp.style === "none";
+    $<HTMLElement>(props, '[data-action="warp-edit"]').setAttribute(
+      "aria-pressed",
+      String(warping),
+    );
+    $<HTMLElement>(props, "#warp-edit-note").hidden = !warping;
+  }
+
+  /** 4 隅のドラッグでの変形を始める・終える */
+  const toggleWarp = (on = !warping) => {
+    const layer = selected();
+    warping = on && layer !== null && layer.type !== "frame";
+    if (warping) finishEditing();
+    if (layer) syncWarpPanel(layer);
+    requestDraw();
+  };
+
+  const resetWarp = () => {
+    const layer = selected();
+    if (!layer) return;
+    layer.warp = model.defaultWarp();
+    commit();
+    syncPanel();
+    requestDraw();
+  };
 
   /** 余白を上下左右そろえて変えるか（パネルだけの設定。保存はしない） */
   let padLinked = true;
@@ -1984,6 +2121,7 @@ export const mount = (root: HTMLElement) => {
       height: shape.height,
       filters: layer.filters,
       backdrop: layer.backdrop,
+      warp: layer.warp,
       type: "path",
       baseWidth: shape.width,
       baseHeight: shape.height,
@@ -2136,6 +2274,12 @@ export const mount = (root: HTMLElement) => {
       layer.box.borderWidth === 0
     ) {
       layer.box.borderWidth = 2;
+      syncPanel();
+    }
+    if (path === "warp.style") {
+      // 曲げ方を選んだら、強さが 0 のままで何も変わらない、とならないようにする
+      if (layer.warp.style !== "none" && layer.warp.bend === 0)
+        layer.warp.bend = 50;
       syncPanel();
     }
     if (path.startsWith("box.") || path.startsWith("layout.")) {
@@ -2360,6 +2504,7 @@ export const mount = (root: HTMLElement) => {
       cancelCrop();
       return;
     }
+    warping = false;
     finishEditing();
     selectedId = null;
     renderLayerList();
@@ -3096,6 +3241,8 @@ export const mount = (root: HTMLElement) => {
     "crop-cancel": cancelCrop,
     "text-done": finishEditing,
     "to-path": () => void convertToPath(),
+    "warp-edit": () => toggleWarp(),
+    "reset-warp": resetWarp,
   };
 
   root.addEventListener("click", (event) => {
@@ -3142,6 +3289,20 @@ export const mount = (root: HTMLElement) => {
         event.preventDefault();
         if (key === "enter") void applyCrop();
         else cancelCrop();
+        return;
+      }
+      // 4 隅を動かしているときは、Enter・Esc で終わる
+      if (
+        warping &&
+        !mod &&
+        (key === "enter" || key === "escape") &&
+        !(
+          event.target instanceof HTMLInputElement &&
+          event.target.type !== "radio"
+        )
+      ) {
+        event.preventDefault();
+        toggleWarp(false);
         return;
       }
       if (isEditable(event.target)) return;
