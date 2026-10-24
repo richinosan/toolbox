@@ -192,11 +192,11 @@ export const psd = async (
         opacity,
         hidden,
       });
-    const { canvas, pad } = cache.get(layer, assets);
+    const { canvas, left, top } = cache.get(layer, assets);
     target.push({
       name: layer.type === "frame" ? `${layer.name}（ボックス）` : layer.name,
-      left: Math.round(layer.x - pad),
-      top: Math.round(layer.y - pad),
+      left: Math.round(layer.x - left),
+      top: Math.round(layer.y - top),
       canvas,
       opacity,
       hidden,
