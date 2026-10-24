@@ -773,7 +773,7 @@ export const mount = (root: HTMLElement) => {
       const layer = doc.layers[i]!;
       if (!shown.get(layer.id)!.visible) continue;
       if (model.hasWarp(layer)) {
-        if (warp.contains(warp.outline(layer), x, y)) return layer;
+        if (warp.hits(layer, x, y)) return layer;
         continue;
       }
       if (
