@@ -63,12 +63,33 @@ const { steps } = Astro.props;
   const part = <T extends HTMLElement>(selector: string) =>
     tour!.querySelector<T>(selector)!;
 
+  // display: contents の要素（狭い画面で 1 枚にまとめたツールバーの組など）は自身の箱を持たないので、
+  // 見えている子要素を囲む範囲を対象の位置として使う
+  const visibleParts = (element: HTMLElement): Element[] =>
+    element.getClientRects().length > 0
+      ? [element]
+      : [...element.children].filter(
+          (child) => child.getClientRects().length > 0,
+        );
+
+  const boxOf = (element: HTMLElement): DOMRect => {
+    const rects = visibleParts(element).map((part) =>
+      part.getBoundingClientRect(),
+    );
+    if (rects.length === 0) return element.getBoundingClientRect();
+    const left = Math.min(...rects.map((rect) => rect.left));
+    const top = Math.min(...rects.map((rect) => rect.top));
+    const right = Math.max(...rects.map((rect) => rect.right));
+    const bottom = Math.max(...rects.map((rect) => rect.bottom));
+    return new DOMRect(left, top, right - left, bottom - top);
+  };
+
   const place = () => {
     const current = steps[index];
     if (!tour?.matches(":popover-open") || !current) return;
     const spotlight = part(".tour__spotlight");
     const bubble = part(".tour__bubble");
-    const rect = current.element.getBoundingClientRect();
+    const rect = boxOf(current.element);
     // 画面端の要素でも枠が切れないように画面内に収める
     const edge = 2;
     const spotTop = Math.max(edge, rect.top - margin);
@@ -117,9 +138,12 @@ const { steps } = Astro.props;
     const next = part<HTMLButtonElement>("[data-tour=next]");
     next.textContent = index === steps.length - 1 ? "完了" : "次へ";
     // モードやタブの切り替えで隠れている対象は、切り替えボタンを押して表示する
-    if (current.element.getClientRects().length === 0 && current.step.reveal)
+    if (visibleParts(current.element).length === 0 && current.step.reveal)
       document.querySelector<HTMLElement>(current.step.reveal)?.click();
-    current.element.scrollIntoView({ block: "center", behavior: "instant" });
+    (visibleParts(current.element)[0] ?? current.element).scrollIntoView({
+      block: "center",
+      behavior: "instant",
+    });
     place();
     // ステップが変わるたびに吹き出しをさっとフェードインさせる
     motion.play(part(".tour__bubble"), "in");
@@ -132,7 +156,7 @@ const { steps } = Astro.props;
     steps = allSteps.flatMap((step) => {
       const element = document.querySelector<HTMLElement>(step.target);
       // 隠れていても reveal で表示できるステップは残す
-      return element && (element.getClientRects().length > 0 || step.reveal)
+      return element && (visibleParts(element).length > 0 || step.reveal)
         ? [{ step, element }]
         : [];
     });

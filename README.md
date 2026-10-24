@@ -10,7 +10,8 @@ toolbox.richinosan.com
 ```
 apps/
   dashboard/   # /           ツール一覧（Worker: toolbox-dashboard）
-  calendar/    # /calendar   日付 → 曜日・祝日・Unix time（Worker: toolbox-calendar）
+  calendar/    # /calendar   日付 → 曜日・祝日・Unix time・残り日数（Worker: toolbox-calendar）
+  em-buttons/  # /em-buttons 貼り付けて使えるボタンの HTML / CSS を作る（Worker: toolbox-em-buttons）
   image/       # /image      画像に文字・図形をレイヤーで重ねる（Worker: toolbox-image）
 packages/
   shared/      # ツール定義（tools.ts）
@@ -39,10 +40,19 @@ mise run build --all  # 全 app をビルド（--dashboard / --calendar のよ�
 mise run check        # 型チェック（astro check / tsc）
 mise run lint         # oxlint（named import 禁止など独自ルールは lint/plugin.mjs）+ 型チェック
 mise run format       # Prettier で整形
-mise run tests        # lint + 整形チェック
+mise run tests        # lint + 整形チェック + ヘルプの検査
+mise run docs-check   # ヘルプ・チュートリアルの検査（spec・tour があり、tour の対象が実在するか）
+mise run docs-stale   # main からコードを変えたのにヘルプを更新していない app を表示
 mise run dev <app>    # app を開発サーバーで起動
 mise run deploy <app> # app をビルドしてデプロイ
 ```
+
+## ヘルプ・チュートリアル・技術仕様
+
+各ページの ？ ボタンで出る技術仕様（`spec`）とチュートリアル（`tour`）は、`apps/<app>/src/pages/index.astro` の `<Layout>` に書きます（ヘッダーの共通ステップは `packages/ui/src/Layout.astro`）。機能を変えたら、同じ変更でここも更新します。
+
+- `mise run tests` に含まれる `docs-check`（`lint/docs.mjs`）が、spec の 4 項目と tour があること、tour の `target` / `reveal` のセレクターが実在することを確かめます（対象が無いステップは画面では黙って飛ばされるため）。
+- Claude Code では `.claude/settings.json` の Stop hook が、main から app のコードを変えたのに `<Layout>` の spec・tour を変えていないとき、一度だけ停止を止めて更新を促します（更新が不要な変更なら、理由を添えてそのまま終われます）。
 
 ## ツールの追加
 
