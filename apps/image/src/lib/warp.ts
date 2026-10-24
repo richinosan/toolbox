@@ -263,6 +263,8 @@ const buildMesh = (
   sourceWidth: number,
   sourceHeight: number,
   pad: number,
+  /** 後で周りに足す余白（ぼかしの広がり）。その分も含めて上限に収める */
+  reserve: number,
 ): Mesh => {
   const map = mapper(layer);
   const cell = layer.warp.style !== "none" && layer.warp.bend !== 0 ? 12 : 24;
@@ -288,7 +290,7 @@ const buildMesh = (
       maxY = Math.max(maxY, p.y);
     }
   // 出力の canvas が上限を超えるときだけ、変形した範囲の中心のまわりに収める
-  const half = model.MAX_SIDE / 2 - 2;
+  const half = model.MAX_SIDE / 2 - 2 - reserve;
   const fit = (min: number, max: number) => {
     if (max - min <= half * 2) return [min, max] as const;
     const center = (min + max) / 2;
@@ -302,8 +304,16 @@ const buildMesh = (
   maxY = Math.ceil(maxY) + 1;
   let width = Math.max(1, maxX - minX);
   let height = Math.max(1, maxY - minY);
-  const area = Math.sqrt(model.MAX_AREA / (width * height));
-  if (area < 1) {
+  const padded = (w: number, h: number) =>
+    (w + reserve * 2) * (h + reserve * 2);
+  if (padded(width, height) > model.MAX_AREA) {
+    // 余白を足しても面積の上限に収まるまで、真ん中に寄せて縮める
+    let area = Math.sqrt(model.MAX_AREA / padded(width, height));
+    while (
+      padded(Math.floor(width * area), Math.floor(height * area)) >
+      model.MAX_AREA
+    )
+      area *= 0.99;
     const shrinkX = (width - width * area) / 2;
     const shrinkY = (height - height * area) / 2;
     minX = Math.round(minX + shrinkX);
@@ -504,69 +514,105 @@ const drawGl = (source: HTMLCanvasElement, mesh: Mesh) => {
 
 // ---- canvas 2D（WebGL が使えないとき） ----
 
-/** 三角形を 1 枚ずつ、アフィン変換で貼る。継ぎ目が見えないよう、切り抜きを少し外へ広げる */
+/**
+ * 三角形を 1 枚ずつ、画素ごとに元の絵から拾って書き込む。
+ * 重ねて描くのではなく書き込む（上書きする）ので、三角形の境目で半透明の部分が濃くならず、継ぎ目も出ない
+ */
 const draw2d = (source: HTMLCanvasElement, mesh: Mesh) => {
   const out = document.createElement("canvas");
   out.width = mesh.width;
   out.height = mesh.height;
   const context = out.getContext("2d")!;
-  context.imageSmoothingQuality = "high";
+  const sw = source.width;
+  const sh = source.height;
+  const src = source
+    .getContext("2d", { willReadFrequently: true })!
+    .getImageData(0, 0, sw, sh).data;
+  const image = context.createImageData(mesh.width, mesh.height);
+  const dst = image.data;
   const { columns, rows, points } = mesh;
-  const sw = source.width / columns;
-  const sh = source.height / rows;
+  const cw = sw / columns;
+  const ch = sh / rows;
+  /** 透明度を掛けた色で、まわり 4 画素から補間する */
+  const sample = (x: number, y: number, at: number) => {
+    const fx = model.clamp(x - 0.5, 0, sw - 1);
+    const fy = model.clamp(y - 0.5, 0, sh - 1);
+    const x0 = Math.floor(fx);
+    const y0 = Math.floor(fy);
+    const x1 = Math.min(sw - 1, x0 + 1);
+    const y1 = Math.min(sh - 1, y0 + 1);
+    const tx = fx - x0;
+    const ty = fy - y0;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let a = 0;
+    for (const [px, py, weight] of [
+      [x0, y0, (1 - tx) * (1 - ty)],
+      [x1, y0, tx * (1 - ty)],
+      [x0, y1, (1 - tx) * ty],
+      [x1, y1, tx * ty],
+    ] as const) {
+      const k = (py * sw + px) * 4;
+      const alpha = (src[k + 3]! / 255) * weight;
+      r += src[k]! * alpha;
+      g += src[k + 1]! * alpha;
+      b += src[k + 2]! * alpha;
+      a += alpha;
+    }
+    if (a <= 0) return;
+    dst[at] = r / a;
+    dst[at + 1] = g / a;
+    dst[at + 2] = b / a;
+    dst[at + 3] = a * 255;
+  };
+  const triangle = (s: [Point, Point, Point], d: [Point, Point, Point]) => {
+    const [d0, d1, d2] = d;
+    const det = (d1.y - d2.y) * (d0.x - d2.x) + (d2.x - d1.x) * (d0.y - d2.y);
+    if (Math.abs(det) < 1e-9) return;
+    const left = Math.max(0, Math.floor(Math.min(d0.x, d1.x, d2.x)));
+    const right = Math.min(
+      mesh.width - 1,
+      Math.ceil(Math.max(d0.x, d1.x, d2.x)),
+    );
+    const top = Math.max(0, Math.floor(Math.min(d0.y, d1.y, d2.y)));
+    const bottom = Math.min(
+      mesh.height - 1,
+      Math.ceil(Math.max(d0.y, d1.y, d2.y)),
+    );
+    const epsilon = -1e-6;
+    for (let y = top; y <= bottom; y++)
+      for (let x = left; x <= right; x++) {
+        // 画素の中心が三角形の中にあるか（重心座標）
+        const px = x + 0.5;
+        const py = y + 0.5;
+        const w0 =
+          ((d1.y - d2.y) * (px - d2.x) + (d2.x - d1.x) * (py - d2.y)) / det;
+        const w1 =
+          ((d2.y - d0.y) * (px - d2.x) + (d0.x - d2.x) * (py - d2.y)) / det;
+        const w2 = 1 - w0 - w1;
+        if (w0 < epsilon || w1 < epsilon || w2 < epsilon) continue;
+        sample(
+          w0 * s[0].x + w1 * s[1].x + w2 * s[2].x,
+          w0 * s[0].y + w1 * s[1].y + w2 * s[2].y,
+          (y * mesh.width + x) * 4,
+        );
+      }
+  };
   const at = (i: number, j: number) => {
     const k = (j * (columns + 1) + i) * 2;
     return { x: points[k]!, y: points[k + 1]! };
   };
-  const triangle = (s: [Point, Point, Point], d: [Point, Point, Point]) => {
-    const [s0, s1, s2] = s;
-    const [d0, d1, d2] = d;
-    const det = (s1.x - s0.x) * (s2.y - s0.y) - (s2.x - s0.x) * (s1.y - s0.y);
-    if (det === 0) return;
-    const a =
-      ((d1.x - d0.x) * (s2.y - s0.y) - (d2.x - d0.x) * (s1.y - s0.y)) / det;
-    const b =
-      ((d1.y - d0.y) * (s2.y - s0.y) - (d2.y - d0.y) * (s1.y - s0.y)) / det;
-    const c =
-      ((d2.x - d0.x) * (s1.x - s0.x) - (d1.x - d0.x) * (s2.x - s0.x)) / det;
-    const dd =
-      ((d2.y - d0.y) * (s1.x - s0.x) - (d1.y - d0.y) * (s2.x - s0.x)) / det;
-    const e = d0.x - a * s0.x - c * s0.y;
-    const f = d0.y - b * s0.x - dd * s0.y;
-    const cx = (d0.x + d1.x + d2.x) / 3;
-    const cy = (d0.y + d1.y + d2.y) / 3;
-    const grow = (p: Point) => {
-      const length = Math.hypot(p.x - cx, p.y - cy) || 1;
-      return {
-        x: p.x + ((p.x - cx) / length) * 0.6,
-        y: p.y + ((p.y - cy) / length) * 0.6,
-      };
-    };
-    const [g0, g1, g2] = [grow(d0), grow(d1), grow(d2)];
-    context.save();
-    context.beginPath();
-    context.moveTo(g0.x, g0.y);
-    context.lineTo(g1.x, g1.y);
-    context.lineTo(g2.x, g2.y);
-    context.closePath();
-    context.clip();
-    context.setTransform(a, b, c, dd, e, f);
-    context.drawImage(source, 0, 0);
-    context.restore();
-  };
   for (let j = 0; j < rows; j++)
     for (let i = 0; i < columns; i++) {
-      const s00 = { x: i * sw, y: j * sh };
-      const s10 = { x: (i + 1) * sw, y: j * sh };
-      const s01 = { x: i * sw, y: (j + 1) * sh };
-      const s11 = { x: (i + 1) * sw, y: (j + 1) * sh };
-      const d00 = at(i, j);
-      const d10 = at(i + 1, j);
-      const d01 = at(i, j + 1);
-      const d11 = at(i + 1, j + 1);
-      triangle([s00, s10, s11], [d00, d10, d11]);
-      triangle([s00, s11, s01], [d00, d11, d01]);
+      const s00 = { x: i * cw, y: j * ch };
+      const s10 = { x: (i + 1) * cw, y: j * ch };
+      const s01 = { x: i * cw, y: (j + 1) * ch };
+      const s11 = { x: (i + 1) * cw, y: (j + 1) * ch };
+      triangle([s00, s10, s11], [at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
+      triangle([s00, s11, s01], [at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
     }
+  context.putImageData(image, 0, 0);
   return out;
 };
 
@@ -577,8 +623,10 @@ export const apply = (
   layer: model.Layer,
   source: HTMLCanvasElement,
   pad: number,
+  /** 後で周りに足す余白（ぼかしの広がり） */
+  reserve = 0,
 ): Warped => {
-  const mesh = buildMesh(layer, source.width, source.height, pad);
+  const mesh = buildMesh(layer, source.width, source.height, pad, reserve);
   const canvas = drawGl(source, mesh) ?? draw2d(source, mesh);
   return { canvas, left: mesh.left, top: mesh.top };
 };
