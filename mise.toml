@@ -86,10 +86,18 @@ run = "prettier --write ."
 description = "Prettier の整形チェック"
 run = "prettier --check ."
 
+[tasks."docs-check"]
+description = "ヘルプ（技術仕様）とチュートリアルの検査（spec・tour があり、tour の対象が実在するか）"
+run = "node lint/docs.mjs"
+
+[tasks."docs-stale"]
+description = "main からコードを変えたのにヘルプ・チュートリアル・技術仕様を更新していない app を表示"
+run = "node lint/docs.mjs --stale"
+
 [tasks.tests]
-description = "lint・型チェック・整形チェックをまとめて実行"
+description = "lint・型チェック・整形チェック・ヘルプの検査をまとめて実行"
 alias = "test"
-depends = ["lint", "format-check"]
+depends = ["lint", "format-check", "docs-check"]
 
 [tasks.dev]
 description = "app を開発サーバーで起動（例: mise run dev calendar）"
