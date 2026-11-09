@@ -8,3 +8,7 @@ dist/
 .DS_Store
 mise.local.toml
 tmp/
+.env
+.env.*
+.env*.local
+.envrc.local
