@@ -9,6 +9,8 @@ const PRECACHE = [
   "/calendar",
   "/em-buttons",
   "/image",
+  // ヘッダーのツール一覧（各ページが読み込む HTML 断片）
+  "/menu",
   "/manifest.webmanifest",
   "/icons/icon.svg",
   // ツールごとの favicon（各ツールの public/icon.svg）

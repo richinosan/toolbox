@@ -134,6 +134,7 @@ const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
           ×
         </button>
       </div>
+      <!-- ビルド時点の一覧。表示後に /menu の最新の一覧で差し替える（#ui/menu.ts） -->
       <ul class="tools-menu">
         {shared.tools.map((tool) => (
           <li>
@@ -194,6 +195,7 @@ const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
 </html>
 
 <script>
+  import * as menu from "./menu";
   import * as motion from "./motion";
   import * as singleton from "./singleton";
 
@@ -209,6 +211,9 @@ const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
       if (target) motion.play(target, "press");
     });
   });
+
+  // ツール一覧は dashboard の /menu から読み込んで最新にする（読み込めなければ埋め込みのまま）
+  menu.start();
 
   // オフラインでも開けるように Service Worker を登録する（本番ビルドのみ）
   if (import.meta.env.PROD && "serviceWorker" in navigator) {
