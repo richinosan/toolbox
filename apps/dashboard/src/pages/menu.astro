@@ -1,0 +1,20 @@
+---
+// ツール一覧の HTML 断片（/menu）。各ツールのページ（#ui/Layout.astro）が読み込んで、
+// ヘッダーのツール一覧ポップオーバーの中身を差し替える（#ui/menu.ts）。
+// ツール一覧は各ツールのビルド時に HTML へ埋め込まれるので、ツールを足しても
+// 再デプロイしていないツールの一覧は古いまま残る。一覧の正は常に dashboard とし、
+// dashboard をデプロイするだけで全ツールの一覧が揃うようにする。
+// スタイルは読み込む側のページのものを使うため、ここでは要素だけを出す。
+import * as shared from "#shared";
+import ToolTile from "#ui/ToolTile.astro";
+
+export const partial = true;
+---
+
+<ul class="tools-menu">
+  {shared.tools.map((tool) => (
+    <li>
+      <ToolTile tool={tool} />
+    </li>
+  ))}
+</ul>
