@@ -26,6 +26,8 @@ packages/
 - Cloudflare の操作は [cf CLI](https://blog.cloudflare.com/cloudflare-cf-cli-launch) で行い、wrangler（`wrangler.jsonc` を含む）は使いません。各 app の `astro.config.mjs` で `#ui/cloudflare.mjs` の integration を読み込み、ビルド時に cf が読む Build Output を書き出します。
 - 各 app は静的ビルドし、Worker の static assets として配信します。
   `/calendar` のようにサブパスを担当する app は `base` と `outDir: ./dist/<path>` を合わせ、URL パスと assets のパスを一致させています。
+- ヘッダーのツール一覧は各 app のビルド時に HTML へ埋め込みますが、表示後に dashboard が配信する HTML 断片（`/menu`）で差し替えます（`#ui/menu.ts`）。
+  ツールを足したときは dashboard をデプロイすれば、ほかの app を再デプロイしなくても一覧が揃います。読み込めないときは埋め込まれた一覧のまま表示します。
 - route はより具体的なパターンが優先されるため、`toolbox.richinosan.com/*` を dashboard、`/calendar` と `/calendar/*` を calendar が処理します。
   （route を有効にするには `toolbox.richinosan.com` の DNS レコードが Cloudflare でプロキシされている必要があります。）
 
