@@ -16,8 +16,10 @@ const { tool } = Astro.props;
   <span class="tool-tile__name">{tool.name}</span>
 </a>
 
-<style>
-  .tool-tile {
+<!-- /menu の HTML 断片（別ビルドの要素）にも効くよう、スコープを付けない -->
+<style is:global>
+  /* スコープが無い分、.card の padding に負けないよう詳細度を上げる */
+  .card.tool-tile {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);

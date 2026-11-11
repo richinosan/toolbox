@@ -22,7 +22,8 @@ const Icon = icons[name];
   <Icon />
 </span>
 
-<style>
+<!-- /menu の HTML 断片（別ビルドの要素）にも効くよう、スコープを付けない -->
+<style is:global>
   /* 大きさは利用側で --tool-icon-size を指定して変える */
   .tool-icon {
     display: inline-block;
@@ -31,7 +32,7 @@ const Icon = icons[name];
     height: var(--tool-icon-size, 2.75rem);
   }
 
-  .tool-icon :global(svg) {
+  .tool-icon svg {
     display: block;
     width: 100%;
     height: 100%;
