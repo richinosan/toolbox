@@ -18,10 +18,11 @@ on:
         required: true
         type: string
 
-# タグごと（手動実行は app ごと）に group を分け、待機中の実行が別のデプロイに置き換えられて消えないようにする
-# （同じ group では待機できるのが 1 本だけで、新しい実行が入ると古い待機が取り消される）
+# デプロイは 1 本ずつ実行する。バージョンの違う app を一緒にデプロイするので、別の app を指定した実行どうしでも
+# 同じ Worker をデプロイしうる。並行して走ると、対象の決定とデプロイが競合して本番のバージョンが混ざる。
+# 同じ group で待機できるのは 1 本だけで、新しい実行が入ると古い待機は取り消される（取り消された分は実行し直す）。
 concurrency:
-  group: deploy-${{ inputs.app || github.ref }}
+  group: deploy-production
   cancel-in-progress: false
 
 permissions:
