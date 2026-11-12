@@ -1,9 +1,9 @@
-// デザインファイル（PSD・AI・PDF・TIFF・SVG）の読み込み。
+// デザインファイルなど（PSD・AI・PDF・TIFF・SVG・HEIC）の読み込み。
 // ブラウザがそのままでは開けない形式を、レイヤーごとの canvas にして返す。
 // デコーダは大きいので、その形式を開くときにだけ読み込む。
 import * as model from "./model";
 
-export type Kind = "psd" | "pdf" | "tiff" | "svg";
+export type Kind = "psd" | "pdf" | "tiff" | "svg" | "heic";
 
 export type ImportedLayer = {
   name: string;
@@ -36,6 +36,8 @@ export const extensions = [
   ".tif",
   ".tiff",
   ".svg",
+  ".heic",
+  ".heif",
 ];
 
 const startsWith = (bytes: Uint8Array, text: string) =>
@@ -53,6 +55,7 @@ export const detect = async (file: Blob, name = ""): Promise<Kind | null> => {
   const text = String.fromCharCode(...head);
   if (text.includes("%PDF-")) return "pdf";
   if (startsWith(head, "II*\0") || startsWith(head, "MM\0*")) return "tiff";
+  if (isHeic(text)) return "heic";
   if (text.includes("%!PS-Adobe") || /\.(ai|eps)$/.test(lower))
     throw new ImportError(
       lower.endsWith(".ai")
@@ -63,6 +66,16 @@ export const detect = async (file: Blob, name = ""): Promise<Kind | null> => {
   if (/\.(psd|psb)$/.test(lower))
     throw new ImportError("この PSD ファイルは壊れているため開けません。");
   return null;
+};
+
+/** HEIC / HEIF か（AVIF も同じ入れ物なので、brand で見分ける） */
+const isHeic = (head: string) => {
+  if (head.slice(4, 8) !== "ftyp") return false;
+  const size = head.charCodeAt(2) * 256 + head.charCodeAt(3);
+  const brands = head.slice(8, Math.max(12, size));
+  return (
+    !brands.includes("avif") && /hei[cxms]|hev[cxms]|mif1|msf1/.test(brands)
+  );
 };
 
 const createCanvas = (width: number, height: number) => {
@@ -293,7 +306,44 @@ const readSvg = async (file: Blob): Promise<Imported> => {
   }
 };
 
-const readers = { psd: readPsd, pdf: readPdf, tiff: readTiff, svg: readSvg };
+const readHeic = async (file: Blob): Promise<Imported> => {
+  // Safari はそのまま開けるので、開けなかったブラウザでだけデコーダを読み込む
+  const image = await createImageBitmap(file).catch(async () => {
+    const heicTo = await import("heic-to");
+    return heicTo.heicTo({ blob: file, type: "bitmap" });
+  });
+  try {
+    const size = model.fitSize(image.width, image.height);
+    return {
+      width: size.width,
+      height: size.height,
+      layers: [
+        {
+          name: "",
+          x: 0,
+          y: 0,
+          visible: true,
+          opacity: 100,
+          canvas: scaled(image, size.width, size.height),
+        },
+      ],
+      notes: size.scaled ? [shrunkNote] : [],
+    };
+  } finally {
+    image.close();
+  }
+};
+
+const readers = {
+  psd: readPsd,
+  pdf: readPdf,
+  tiff: readTiff,
+  svg: readSvg,
+  heic: (file: Blob) =>
+    readHeic(file).catch(() => {
+      throw new ImportError("この HEIC ファイルは開けませんでした。");
+    }),
+};
 
 export const read = (file: Blob, kind: Kind) => readers[kind](file);
 
