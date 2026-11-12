@@ -303,6 +303,9 @@ export const flatten = (imported: Imported): HTMLCanvasElement => {
   if (
     imported.layers.length === 1 &&
     only &&
+    // 非表示や半透明のときは、下で重ねてその見た目にする
+    only.visible &&
+    only.opacity === 100 &&
     only.x === 0 &&
     only.y === 0 &&
     only.canvas.width === imported.width &&
