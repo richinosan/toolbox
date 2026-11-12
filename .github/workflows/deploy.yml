@@ -3,46 +3,93 @@ name: Deploy
 # app 単位でデプロイする。
 #   タグ:     <app>/v* を push（例: git tag calendar/v1.0.0 && git push origin calendar/v1.0.0）
 #   手動実行: Actions の Run workflow で app 名を入力
+# ヘッダー・フッター・メニューは各 app のビルドに焼き込まれるので、全 app が同じ内容からビルドされていないと挙動が揃わない。
+# そこで、指定した app に加えて、本番で共有部分のバージョン（#ui/version.mjs）がこのコミットと違う app も一緒にデプロイする。
+# packages/ui・packages/shared・pnpm-lock.yaml を変えたあとは、どの app を指定しても全 app がデプロイされる。
+# デプロイ後に本番の全 app でバージョンが揃っているかを検査し、ずれていれば失敗にする。
+# app に all を指定（またはタグ all/v*）すると、バージョンに関係なく全 app をデプロイする。
 on:
   push:
     tags: ["*/v*"]
   workflow_dispatch:
     inputs:
       app:
-        description: "デプロイする app（apps/ 配下のディレクトリ名。例: calendar）"
+        description: "デプロイする app（apps/ 配下のディレクトリ名。例: calendar）。all で全 app"
         required: true
         type: string
 
-# タグごと（手動実行は app ごと）に group を分け、待機中の実行が別のデプロイに置き換えられて消えないようにする
-# （同じ group では待機できるのが 1 本だけで、新しい実行が入ると古い待機が取り消される）
+# デプロイは 1 本ずつ実行する。バージョンの違う app を一緒にデプロイするので、別の app を指定した実行どうしでも
+# 同じ Worker をデプロイしうる。並行して走ると、対象の決定とデプロイが競合して本番のバージョンが混ざる。
+# 同じ group で待機できるのは 1 本だけで、新しい実行が入ると古い待機は取り消される（取り消された分は実行し直す）。
 concurrency:
-  group: deploy-${{ inputs.app || github.ref }}
+  group: deploy-production
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
+  # タグ名（calendar/v1.0.0 → calendar）または入力の app に、共有部分のバージョンが本番と違う app を足して、デプロイする app の一覧を決める
+  resolve:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.apps.outputs.list }}
     steps:
       - uses: actions/checkout@v7
 
-      # タグ名（calendar/v1.0.0 → calendar）または入力から app を決める
-      - name: Resolve app
-        id: app
+      # mise.toml に固定した node を入れる（バージョンの計算に使う）
+      - uses: jdx/mise-action@v5
+
+      - name: Resolve apps
+        id: apps
         env:
           INPUT_APP: ${{ inputs.app }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           if [ "$REF_TYPE" = "tag" ]; then app="${REF_NAME%%/*}"; else app="$INPUT_APP"; fi
-          if [ ! -f "apps/$app/cloudflare.config.ts" ]; then
-            echo "::error::apps/$app/cloudflare.config.ts がありません（app: $app）"
-            exit 1
+          all=""
+          for config in apps/*/cloudflare.config.ts; do
+            all="$all $(basename "$(dirname "$config")")"
+          done
+          if [ "$app" = "all" ]; then
+            selected="$all"
+          else
+            case " $all " in
+              *" $app "*) ;;
+              *)
+                echo "::error::apps/$app/cloudflare.config.ts がありません（app: $app）"
+                exit 1
+                ;;
+            esac
+            # 本番で共有部分のバージョンがこのコミットと違う app（JSON の配列）
+            stale="$(mise run chrome-stale)"
+            echo "共有部分のバージョンが本番と違う app: $stale"
+            selected=""
+            for name in $all; do
+              case "$stale" in
+                *"\"$name\""*) selected="$selected $name" ;;
+                *) [ "$name" = "$app" ] && selected="$selected $name" ;;
+              esac
+            done
           fi
-          echo "name=$app" >> "$GITHUB_OUTPUT"
+          list=""
+          for name in $selected; do list="$list\"$name\","; done
+          echo "デプロイする app: $selected"
+          echo "list=[${list%,}]" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # どれかが失敗しても残りは止めない（途中で止めるとバージョンのずれた app が増える）
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.resolve.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v7
 
       # mise.toml に固定した node / pnpm / ni / cf を入れる
       - uses: jdx/mise-action@v5
@@ -55,5 +102,17 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_TOKEN }}
-          APP: ${{ steps.app.outputs.name }}
+          APP: ${{ matrix.app }}
         run: mise run deploy "$APP"
+
+  # 本番の全 app で、共有部分（ヘッダー・フッター・メニュー）のバージョンがこのコミットのものに揃っているかを検査する。
+  # resolve がバージョンの違う app を一緒にデプロイするので通常は揃う。どれかのデプロイが失敗したときなどにここで失敗する。
+  verify:
+    needs: deploy
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - run: mise run chrome-check --wait
