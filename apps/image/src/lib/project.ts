@@ -2,6 +2,7 @@
 // 保存（Ctrl+S）は端末のファイルとして書き出す（再読み込みに備えた一時保存は draft.ts）。
 // File System Access API が使えるブラウザでは同じファイルに上書き保存し、使えないブラウザではダウンロードする。
 import * as fonts from "./fonts";
+import * as importer from "./importer";
 import * as model from "./model";
 import * as text from "./text";
 
@@ -519,6 +520,7 @@ export const pickFile = async (
                 ".avif",
                 ".bmp",
               ],
+              "application/octet-stream": importer.extensions,
             },
           },
         ],
@@ -558,4 +560,7 @@ export const isImageFile = (file: Blob) =>
 export const baseName = (filename: string) =>
   filename.replace(/\.[^.]+$/, "") || "無題";
 
-export const accept = `${EXTENSION},image/*`;
+/** 画像として追加できるファイル（ブラウザが開ける画像と、デザインファイル） */
+export const imageAccept = `image/*,${importer.extensions.join(",")}`;
+
+export const accept = `${EXTENSION},${imageAccept}`;
