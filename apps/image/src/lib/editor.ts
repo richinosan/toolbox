@@ -6,6 +6,7 @@ import * as filters from "./filters";
 import * as fontpicker from "./fontpicker";
 import * as fonts from "./fonts";
 import * as fontsize from "./fontsize";
+import * as importer from "./importer";
 import * as layout from "./layout";
 import * as model from "./model";
 import * as outline from "./outline";
@@ -441,7 +442,11 @@ export const mount = (root: HTMLElement) => {
 
   // ---- 通知 ----
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
-  const notify = (message: string, error = false) => {
+  const notify = (
+    message: string,
+    error = false,
+    duration = error ? 4000 : 2000,
+  ) => {
     toast.textContent = message;
     toast.classList.toggle("toast--error", error);
     toast.classList.add("toast--visible");
@@ -449,7 +454,7 @@ export const mount = (root: HTMLElement) => {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(
       () => toast.classList.remove("toast--visible"),
-      error ? 4000 : 2000,
+      duration,
     );
   };
 
@@ -2818,6 +2823,98 @@ export const mount = (root: HTMLElement) => {
     }
   };
 
+  /** PSD・AI などのデザインファイルを開く。新しい作品にするときは、レイヤーを分けたまま読み込む */
+  const openDesign = async (
+    file: Blob,
+    kind: importer.Kind,
+    name: string,
+    asNewDoc: boolean,
+  ) => {
+    notify("読み込んでいます…");
+    try {
+      const imported = await importer.read(file, kind);
+      const current = doc;
+      const toAsset = async (canvas: HTMLCanvasElement) => {
+        // 編集中のデータなので、劣化しない PNG にする
+        const blob = await exporter.toBlob(canvas, "image/png");
+        return addAsset(blob, await createImageBitmap(blob));
+      };
+      if (asNewDoc || !doc) {
+        const next: model.Doc = {
+          name,
+          width: imported.width,
+          height: imported.height,
+          background: null,
+          layers: [],
+        };
+        for (const layer of imported.layers)
+          next.layers.push({
+            ...model.createImage(
+              next,
+              await toAsset(layer.canvas),
+              layer.canvas.width,
+              layer.canvas.height,
+              layer.name || name,
+            ),
+            x: layer.x,
+            y: layer.y,
+            // キャンバスからはみ出すレイヤーも、元の大きさのまま置く
+            width: layer.canvas.width,
+            height: layer.canvas.height,
+            visible: layer.visible,
+            opacity: layer.opacity,
+          });
+        startDoc(next, null);
+      } else {
+        const canvas = importer.flatten(imported);
+        addLayer(
+          model.createImage(
+            doc,
+            await toAsset(canvas),
+            canvas.width,
+            canvas.height,
+            name,
+          ),
+        );
+      }
+      notify(
+        [
+          `「${name}」を${asNewDoc || !current ? "開きました" : "追加しました"}。`,
+          ...imported.notes,
+        ].join(""),
+        false,
+        imported.notes.length > 0 ? 6000 : undefined,
+      );
+    } catch (error) {
+      notify(
+        error instanceof importer.ImportError
+          ? error.message
+          : "このファイルは読み込めませんでした。",
+        true,
+      );
+    }
+  };
+
+  /** 画像かデザインファイルなら開いて true を返す */
+  const openImageFile = async (file: Blob, name: string, asNewDoc: boolean) => {
+    let kind: importer.Kind | null;
+    try {
+      kind = await importer.detect(file, file instanceof File ? file.name : "");
+    } catch (error) {
+      notify(
+        error instanceof importer.ImportError
+          ? error.message
+          : "このファイルは読み込めませんでした。",
+        true,
+      );
+      return true;
+    }
+    if (kind) await openDesign(file, kind, name, asNewDoc);
+    else if (project.isImageFile(file)) await openImage(file, name, asNewDoc);
+    else return false;
+    return true;
+  };
+
   const openProject = async (file: File, handle: project.FileHandle | null) => {
     try {
       const loaded = await project.deserialize(file);
@@ -2838,10 +2935,11 @@ export const mount = (root: HTMLElement) => {
 
   const openFile = async (file: File, handle: project.FileHandle | null) => {
     if (project.isProjectFile(file)) await openProject(file, handle);
-    else if (project.isImageFile(file))
-      await openImage(file, project.baseName(file.name), true);
-    else
-      notify("画像か IMAGE の作品ファイル（.tbimg）を選んでください。", true);
+    else if (!(await openImageFile(file, project.baseName(file.name), true)))
+      notify(
+        "画像・PSD・AI か、IMAGE の作品ファイル（.tbimg）を選んでください。",
+        true,
+      );
   };
 
   const open = async () => {
@@ -2863,7 +2961,8 @@ export const mount = (root: HTMLElement) => {
 
   const addImage = async () => {
     const file = await pickImage();
-    if (file) await openImage(file, project.baseName(file.name), !doc);
+    if (file && !(await openImageFile(file, project.baseName(file.name), !doc)))
+      notify("画像・PSD・AI のファイルを選んでください。", true);
   };
 
   const addText = () => {
@@ -3397,20 +3496,24 @@ export const mount = (root: HTMLElement) => {
     if (!file) return;
     if (project.isProjectFile(file)) {
       if (confirmDiscard()) void openProject(file, null);
-    } else if (project.isImageFile(file)) {
-      void openImage(file, project.baseName(file.name), !doc);
+    } else {
+      void openImageFile(file, project.baseName(file.name), !doc);
     }
   });
   document.addEventListener(
     "paste",
     (event) => {
       if (isEditable(event.target)) return;
-      const file = [...(event.clipboardData?.files ?? [])].find((f) =>
-        project.isImageFile(f),
+      const file = [...(event.clipboardData?.files ?? [])].find(
+        (f) =>
+          project.isImageFile(f) ||
+          importer.extensions.some((extension) =>
+            f.name.toLowerCase().endsWith(extension),
+          ),
       );
       if (!file) return;
       event.preventDefault();
-      void openImage(file, "貼り付けた画像", !doc);
+      void openImageFile(file, "貼り付けた画像", !doc);
     },
     { signal },
   );
