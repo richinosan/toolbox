@@ -47,6 +47,7 @@ mise run docs-check   # ヘルプ・チュートリアルの検査（spec・tour
 mise run docs-stale   # main からコードを変えたのにヘルプを更新していない app を表示
 mise run dev <app>    # app を開発サーバーで起動
 mise run deploy <app> # app をビルドしてデプロイ
+mise run chrome-check # 本番の全 app でヘッダー・フッター・メニューのバージョンが揃っているか検査
 ```
 
 ## ヘルプ・チュートリアル・技術仕様
@@ -65,6 +66,12 @@ mise run deploy <app> # app をビルドしてデプロイ
 ## デプロイ（GitHub Actions）
 
 app 単位でデプロイします。`.github/workflows/deploy.yml` が [jdx/mise-action](https://github.com/jdx/mise-action) で mise.toml のツールを入れたうえで、`mise run install` → `mise run tests` → `mise run deploy <app>` の順に実行します（`main` への push では動きません）。
+
+ヘッダー・フッター・メニューは `packages/ui` の 1 か所のソースを各 app のビルドに埋め込むため、全 app が同じ内容からビルドされているときだけ挙動が揃います。これをコードで保証します。
+
+- ビルド時に、共有部分（`packages/ui`・`packages/shared`・`pnpm-lock.yaml`）の内容から作ったバージョン（ハッシュ）を全ページの `<meta name="toolbox-chrome">` に埋め込みます（`#ui/version.mjs`。`astro.config.mjs` に integration が無い app はビルドが失敗します）。
+- Deploy workflow は、指定した app に加えて、本番のバージョンがそのコミットと違う app も一緒にデプロイします。共有部分を変えたあとは、どの app を指定しても全 app がデプロイされます。
+- デプロイ後に `mise run chrome-check --wait`（`lint/chrome.mjs`）で本番の全 app のバージョンが一致するかを検査し、ずれていれば workflow が失敗します。
 
 - タグ `<app>/v*` を push するとその app をデプロイします（例: `git tag calendar/v1.0.0 && git push origin calendar/v1.0.0`）。
 - Actions の Run workflow（手動実行）で app 名を入力してもデプロイできます。

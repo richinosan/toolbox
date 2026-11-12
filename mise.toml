@@ -94,6 +94,15 @@ run = "node lint/docs.mjs"
 description = "main からコードを変えたのにヘルプ・チュートリアル・技術仕様を更新していない app を表示"
 run = "node lint/docs.mjs --stale"
 
+[tasks."chrome-check"]
+description = "本番の全 app で共有部分（ヘッダー・フッター・メニュー）のバージョンが揃っているか検査（デプロイ直後は --wait）"
+usage = 'flag "--wait" help="反映を待って数回やり直す"'
+run = 'node lint/chrome.mjs ${usage_wait:+--wait}'
+
+[tasks."chrome-stale"]
+description = "本番で共有部分のバージョンが手元のソースと違う app を JSON の配列で表示（Deploy workflow が使う）"
+run = "node lint/chrome.mjs --stale"
+
 [tasks.tests]
 description = "lint・型チェック・整形チェック・ヘルプの検査をまとめて実行"
 alias = "test"
