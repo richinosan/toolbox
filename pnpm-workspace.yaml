@@ -17,3 +17,9 @@ packageExtensions:
 # 含まれるので、その範囲に解決されたときは修正済みのバージョンへ引き上げる。
 overrides:
   "vite@>=8.0.0 <8.3.7": "^8.3.7"
+# pnpm audit（mise run audit）で無視する脆弱性。修正版がまだ無いものだけを、理由を添えて書く。修正版が出たら消す。
+auditConfig:
+  ignoreGhsas:
+    # picomatch の ReDoS（4.0.7 以下すべてが対象で、修正版が未公開）。astro / vite がビルド時に、
+    # このリポジトリの設定に書いたパターンに対してだけ使う。利用者の入力は渡らず、配信するコードにも含まれない。
+    - GHSA-fc5q-39xc-vjpf

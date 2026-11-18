@@ -19,7 +19,7 @@ run = "ni --frozen"
 
 [tasks.update]
 description = "ツール（mise upgrade --bump --local）と依存パッケージ（npm-check-updates）を最新にしてインストール"
-# lint・テストの前に必ず走る（check / lint / tests の depends）。mise.toml・package.json・pnpm-lock.yaml が書き換わる。
+# lint・テストの前に必ず走る（audit / check / lint / tests の depends）。mise.toml・package.json・pnpm-lock.yaml が書き換わる。
 # CI（デプロイ）ではアップデートせず、コミットされた lockfile どおりに検査する。
 # --local で、この mise.toml のツールだけを上げる（~/.config/mise のグローバルなツールは触らない）。
 # mise run は開始時のツールのパスを後続のタスクにも引き継ぐので、アップデート後のツールで動かすために、
@@ -34,6 +34,8 @@ mise upgrade --bump --local
 mise exec -- npm pkg set "packageManager=pnpm@$(mise current pnpm)"
 mise exec -- ncu --upgrade
 mise exec -- ni
+# npm-check-updates が上げるのは package.json に書いた依存だけなので、間接依存も許される範囲で最新にする
+mise exec -- nup
 '''
 
 [tasks.build]
@@ -80,9 +82,16 @@ for app in $available; do
 done
 '''
 
-[tasks.check]
-description = "アップデート → 型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
+[tasks.audit]
+description = "アップデート → 依存パッケージの脆弱性の検査（pnpm audit）"
+# lint・テストの前に必ず走る（check / lint / tests の depends）。CI（デプロイ）でも実行する。
+# 修正版がまだ無い脆弱性は、理由を添えて pnpm-workspace.yaml の auditConfig.ignoreGhsas に書く。
 depends = ["update"]
+run = "mise exec -- pnpm audit"
+
+[tasks.check]
+description = "アップデート → 脆弱性の検査 → 型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
+depends = ["update", "audit"]
 run = '''
 for dir in apps/*/ packages/*/; do
   [ -f "$dir/tsconfig.json" ] || continue
@@ -95,8 +104,8 @@ done
 '''
 
 [tasks.lint]
-description = "アップデート → 型チェック → oxlint"
-depends = ["update", "check"]
+description = "アップデート → 脆弱性の検査 → 型チェック → oxlint"
+depends = ["update", "audit", "check"]
 run = "mise exec -- oxlint"
 
 [tasks.format]
@@ -105,12 +114,12 @@ run = "prettier --write ."
 
 [tasks."format-check"]
 description = "Prettier の整形チェック"
-wait_for = ["update"]
+wait_for = ["update", "audit"]
 run = "mise exec -- prettier --check ."
 
 [tasks."docs-check"]
 description = "ヘルプ（技術仕様）とチュートリアルの検査（spec・tour があり、tour の対象が実在するか）"
-wait_for = ["update"]
+wait_for = ["update", "audit"]
 run = "mise exec -- node lint/docs.mjs"
 
 [tasks."docs-stale"]
@@ -127,9 +136,9 @@ description = "本番で共有部分のバージョンが手元のソースと�
 run = "node lint/chrome.mjs --stale"
 
 [tasks.tests]
-description = "アップデート → lint・型チェック → 整形チェック・ヘルプの検査をまとめて実行"
+description = "アップデート → 脆弱性の検査 → lint・型チェック → 整形チェック・ヘルプの検査をまとめて実行"
 alias = "test"
-depends = ["update", "lint", "format-check", "docs-check"]
+depends = ["update", "audit", "lint", "format-check", "docs-check"]
 
 [tasks.dev]
 description = "app を開発サーバーで起動（例: mise run dev calendar）"
