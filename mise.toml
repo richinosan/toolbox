@@ -1,8 +1,9 @@
 [tools]
 ni = "30.6.0"
-node = "26.10.0"
+node = "26.13.1"
 "npm:cf" = "1.0.0-beta.7"
-pnpm = "12.8.1"
+"npm:npm-check-updates" = "23.1.1"
+pnpm = "12.21.0"
 
 # コマンドはすべて mise task に集約する（`mise tasks` で一覧）。
 # 依存はルートの package.json だけで管理し、CLI（astro, tsc など）はルートの node_modules/.bin から使う。cf CLI は mise の npm:cf で入れる。
@@ -15,6 +16,25 @@ _.path = ["{{config_root}}/node_modules/.bin"]
 [tasks.install]
 description = "依存パッケージをインストール（lockfile どおり）"
 run = "ni --frozen"
+
+[tasks.update]
+description = "ツール（mise upgrade --bump --local）と依存パッケージ（npm-check-updates）を最新にしてインストール"
+# lint・テストの前に必ず走る（check / lint / tests の depends）。mise.toml・package.json・pnpm-lock.yaml が書き換わる。
+# CI（デプロイ）ではアップデートせず、コミットされた lockfile どおりに検査する。
+# --local で、この mise.toml のツールだけを上げる（~/.config/mise のグローバルなツールは触らない）。
+# mise run は開始時のツールのパスを後続のタスクにも引き継ぐので、アップデート後のツールで動かすために、
+# このタスクの続きと、検査のタスク（check / lint / format-check / docs-check）のコマンドは mise exec 経由で呼ぶ。
+run = '''
+if [ -n "${CI:-}" ]; then
+  echo "CI ではアップデートしません（lockfile どおりに検査します）"
+  exit 0
+fi
+set -e
+mise upgrade --bump --local
+mise exec -- npm pkg set "packageManager=pnpm@$(mise current pnpm)"
+mise exec -- ncu --upgrade
+mise exec -- ni
+'''
 
 [tasks.build]
 description = "app をビルド（例: mise run build --all / --dashboard / --calendar）"
@@ -61,22 +81,23 @@ done
 '''
 
 [tasks.check]
-description = "型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
+description = "アップデート → 型チェック（.astro を含むディレクトリは astro check、それ以外は tsc）"
+depends = ["update"]
 run = '''
 for dir in apps/*/ packages/*/; do
   [ -f "$dir/tsconfig.json" ] || continue
   if find "$dir" -name "*.astro" -not -path "*/node_modules/*" -print -quit | grep -q .; then
-    astro check --root "$dir"
+    mise exec -- astro check --root "$dir"
   else
-    tsc --noEmit -p "$dir"
+    mise exec -- tsc --noEmit -p "$dir"
   fi
 done
 '''
 
 [tasks.lint]
-description = "oxlint + 型チェック"
-depends = ["check"]
-run = "oxlint"
+description = "アップデート → 型チェック → oxlint"
+depends = ["update", "check"]
+run = "mise exec -- oxlint"
 
 [tasks.format]
 description = "Prettier で整形"
@@ -84,11 +105,13 @@ run = "prettier --write ."
 
 [tasks."format-check"]
 description = "Prettier の整形チェック"
-run = "prettier --check ."
+wait_for = ["update"]
+run = "mise exec -- prettier --check ."
 
 [tasks."docs-check"]
 description = "ヘルプ（技術仕様）とチュートリアルの検査（spec・tour があり、tour の対象が実在するか）"
-run = "node lint/docs.mjs"
+wait_for = ["update"]
+run = "mise exec -- node lint/docs.mjs"
 
 [tasks."docs-stale"]
 description = "main からコードを変えたのにヘルプ・チュートリアル・技術仕様を更新していない app を表示"
@@ -104,9 +127,9 @@ description = "本番で共有部分のバージョンが手元のソースと�
 run = "node lint/chrome.mjs --stale"
 
 [tasks.tests]
-description = "lint・型チェック・整形チェック・ヘルプの検査をまとめて実行"
+description = "アップデート → lint・型チェック → 整形チェック・ヘルプの検査をまとめて実行"
 alias = "test"
-depends = ["lint", "format-check", "docs-check"]
+depends = ["update", "lint", "format-check", "docs-check"]
 
 [tasks.dev]
 description = "app を開発サーバーで起動（例: mise run dev calendar）"
