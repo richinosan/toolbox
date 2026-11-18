@@ -7,3 +7,9 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - "@cloudflare/build-output-utils@0.8.4"
   - "@cloudflare/config@0.22.0"
+# @astrojs/astro2tsx（astro check が使う）は @emnapi/core 1.x に依存するが、対になる @emnapi/runtime を自分では持たず、
+# 他のパッケージ（rolldown の wasm 版）が入れる 2.0.0-beta と組み合わされて astro check が落ちる。1.x を明示して揃える。
+packageExtensions:
+  "@astrojs/astro2tsx":
+    dependencies:
+      "@emnapi/runtime": "^1.11.3"
