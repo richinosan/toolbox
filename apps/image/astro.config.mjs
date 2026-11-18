@@ -5,6 +5,7 @@ import * as url from "node:url";
 import * as astroConfig from "astro/config";
 import * as uiCloudflare from "#ui/cloudflare.mjs";
 import * as uiFonts from "#ui/fonts.mjs";
+import * as uiVersion from "#ui/version.mjs";
 
 // /image 配下を担当する Worker。
 // Worker は URL パスそのままで assets を引くため、出力も dist/image/ に置き
@@ -42,5 +43,9 @@ export default astroConfig.defineConfig({
   outDir: "./dist/image",
   trailingSlash: "never",
   fonts: uiFonts.fonts,
-  integrations: [pdfjsAssets(), uiCloudflare.cloudflareBuildOutput()],
+  integrations: [
+    pdfjsAssets(),
+    uiCloudflare.cloudflareBuildOutput(),
+    uiVersion.chromeVersionIntegration(),
+  ],
 });

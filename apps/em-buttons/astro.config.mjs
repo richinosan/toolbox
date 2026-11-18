@@ -2,6 +2,7 @@
 import * as astroConfig from "astro/config";
 import * as uiCloudflare from "#ui/cloudflare.mjs";
 import * as uiFonts from "#ui/fonts.mjs";
+import * as uiVersion from "#ui/version.mjs";
 
 // /em-buttons 配下を担当する Worker。
 // Worker は URL パスそのままで assets を引くため、出力も dist/em-buttons/ に置き
@@ -12,5 +13,8 @@ export default astroConfig.defineConfig({
   outDir: "./dist/em-buttons",
   trailingSlash: "never",
   fonts: uiFonts.fonts,
-  integrations: [uiCloudflare.cloudflareBuildOutput()],
+  integrations: [
+    uiCloudflare.cloudflareBuildOutput(),
+    uiVersion.chromeVersionIntegration(),
+  ],
 });
