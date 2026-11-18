@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/lint/docs.mjs\" --hook",
-            "timeout": 30
+            "command": "node \"$CLAUDE_PROJECT_DIR/lint/hook.mjs\"",
+            "timeout": 600
           }
         ]
       }
