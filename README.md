@@ -39,7 +39,7 @@ node / pnpm / ni は [mise](https://mise.jdx.dev/) で管理し、コマンド�
 mise install          # node / pnpm / ni を入れる
 mise run install      # 依存パッケージをインストール
 mise run build --all  # 全 app をビルド（--dashboard / --calendar のように app を指定することもできる）
-mise run update       # ツール（mise upgrade --bump）と依存パッケージ（npm-check-updates）を最新にしてインストール
+mise run update       # ツール（mise upgrade --bump --local）と依存パッケージ（npm-check-updates）を最新にしてインストール
 mise run check        # アップデート → 型チェック（astro check / tsc）
 mise run lint         # アップデート → 型チェック → oxlint（named import 禁止など独自ルールは lint/plugin.mjs）
 mise run format       # Prettier で整形
@@ -52,7 +52,7 @@ mise run deploy <app> # app をビルドしてデプロイ
 
 `mise run check` / `lint` / `tests` は、検査の前に必ず `mise run update` を実行します。
 
-- `mise upgrade --bump` で mise.toml のツール（node / pnpm / ni / cf など）を、[npm-check-updates](https://github.com/raineorshine/npm-check-updates) でルートの package.json の依存を最新にし、インストールし直します。mise.toml・package.json・pnpm-lock.yaml が書き換わるので、検査が通ったら一緒にコミットします。
+- `mise upgrade --bump --local` で mise.toml のツール（node / pnpm / ni / cf など）を、[npm-check-updates](https://github.com/raineorshine/npm-check-updates) でルートの package.json の依存を最新にし、インストールし直します。mise.toml・package.json・pnpm-lock.yaml が書き換わるので、検査が通ったら一緒にコミットします。
 - 最新にすると検査が動かなくなるパッケージは、`.ncurc.cjs` で上げ幅を絞ります（いまは astro check が未対応の TypeScript 7 だけ）。
 - CI（デプロイ）ではアップデートせず、コミットされた lockfile どおりに検査します（検査していないバージョンをデプロイしないため）。
 - Claude Code では `.claude/settings.json` の Stop hook（`lint/hook.mjs`）が、アップデート → lint → テストの順に `mise run tests` を実行し、失敗したら一度だけ停止を止めます。
