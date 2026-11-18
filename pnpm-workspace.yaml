@@ -7,3 +7,13 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - "@cloudflare/build-output-utils@0.8.4"
   - "@cloudflare/config@0.22.0"
+# @astrojs/astro2tsx（astro check が使う）は @emnapi/core 1.x に依存するが、対になる @emnapi/runtime を自分では持たず、
+# 他のパッケージ（rolldown の wasm 版）が入れる 2.0.0-beta と組み合わされて astro check が落ちる。1.x を明示して揃える。
+packageExtensions:
+  "@astrojs/astro2tsx":
+    dependencies:
+      "@emnapi/runtime": "^1.11.3"
+# vite は astro 経由でだけ入る。astro が許す範囲に脆弱性のあるバージョン（GHSA-p4f5-76q4-ffq7、8.3.7 で修正）が
+# 含まれるので、その範囲に解決されたときは修正済みのバージョンへ引き上げる。
+overrides:
+  "vite@>=8.0.0 <8.3.7": "^8.3.7"
