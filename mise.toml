@@ -18,17 +18,19 @@ description = "依存パッケージをインストール（lockfile どおり�
 run = "ni --frozen"
 
 [tasks.update]
-description = "ツール（mise upgrade --bump）と依存パッケージ（npm-check-updates）を最新にしてインストール"
+description = "ツール（mise upgrade --bump --local）と依存パッケージ（npm-check-updates）を最新にしてインストール"
 # lint・テストの前に必ず走る（check / lint / tests の depends）。mise.toml・package.json・pnpm-lock.yaml が書き換わる。
 # CI（デプロイ）ではアップデートせず、コミットされた lockfile どおりに検査する。
-# アップデート後のツールで動かすため、後続のコマンドは mise exec 経由で呼ぶ。
+# --local で、この mise.toml のツールだけを上げる（~/.config/mise のグローバルなツールは触らない）。
+# mise run は開始時のツールのパスを後続のタスクにも引き継ぐので、アップデート後のツールで動かすために、
+# このタスクの続きと、検査のタスク（check / lint / format-check / docs-check）のコマンドは mise exec 経由で呼ぶ。
 run = '''
 if [ -n "${CI:-}" ]; then
   echo "CI ではアップデートしません（lockfile どおりに検査します）"
   exit 0
 fi
 set -e
-mise upgrade --bump
+mise upgrade --bump --local
 mise exec -- npm pkg set "packageManager=pnpm@$(mise current pnpm)"
 mise exec -- ncu --upgrade
 mise exec -- ni
@@ -85,9 +87,9 @@ run = '''
 for dir in apps/*/ packages/*/; do
   [ -f "$dir/tsconfig.json" ] || continue
   if find "$dir" -name "*.astro" -not -path "*/node_modules/*" -print -quit | grep -q .; then
-    astro check --root "$dir"
+    mise exec -- astro check --root "$dir"
   else
-    tsc --noEmit -p "$dir"
+    mise exec -- tsc --noEmit -p "$dir"
   fi
 done
 '''
@@ -95,7 +97,7 @@ done
 [tasks.lint]
 description = "アップデート → 型チェック → oxlint"
 depends = ["update", "check"]
-run = "oxlint"
+run = "mise exec -- oxlint"
 
 [tasks.format]
 description = "Prettier で整形"
@@ -104,12 +106,12 @@ run = "prettier --write ."
 [tasks."format-check"]
 description = "Prettier の整形チェック"
 wait_for = ["update"]
-run = "prettier --check ."
+run = "mise exec -- prettier --check ."
 
 [tasks."docs-check"]
 description = "ヘルプ（技術仕様）とチュートリアルの検査（spec・tour があり、tour の対象が実在するか）"
 wait_for = ["update"]
-run = "node lint/docs.mjs"
+run = "mise exec -- node lint/docs.mjs"
 
 [tasks."docs-stale"]
 description = "main からコードを変えたのにヘルプ・チュートリアル・技術仕様を更新していない app を表示"
