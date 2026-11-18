@@ -45,6 +45,13 @@ const pageTitle = title === siteName ? siteName : `${title} | ${siteName}`;
 // ダッシュボードはサイト共通の /icons/icon.svg を使う。
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
+// 共有部分（ヘッダー・フッター・メニュー）のバージョン。全 app で一致するかを lint/chrome.mjs が本番で検査する
+const chromeVersion: unknown = import.meta.env["TOOLBOX_CHROME_VERSION"];
+if (typeof chromeVersion !== "string") {
+  throw new Error(
+    "astro.config.mjs の integrations に #ui/version.mjs の chromeVersionIntegration() がありません。",
+  );
+}
 ---
 
 <!doctype html>
@@ -56,6 +63,7 @@ const faviconHref = base ? `${base}/icon.svg` : "/icons/icon.svg";
     <assets.Font cssVariable="--font-line-seed-jp" />
     {description && <meta name="description" content={description} />}
     <!-- PWA: manifest / ホーム画面アイコン / Service Worker はサイトのルート（dashboard の Worker）が配信する -->
+    <meta name="toolbox-chrome" content={chromeVersion} />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href={faviconHref} type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
