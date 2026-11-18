@@ -40,10 +40,11 @@ mise install          # node / pnpm / ni を入れる
 mise run install      # 依存パッケージをインストール
 mise run build --all  # 全 app をビルド（--dashboard / --calendar のように app を指定することもできる）
 mise run update       # ツール（mise upgrade --bump --local）と依存パッケージ（npm-check-updates）を最新にしてインストール
-mise run check        # アップデート → 型チェック（astro check / tsc）
-mise run lint         # アップデート → 型チェック → oxlint（named import 禁止など独自ルールは lint/plugin.mjs）
+mise run audit        # アップデート → 依存パッケージの脆弱性の検査（pnpm audit）
+mise run check        # アップデート → 脆弱性の検査 → 型チェック（astro check / tsc）
+mise run lint         # アップデート → 脆弱性の検査 → 型チェック → oxlint（named import 禁止など独自ルールは lint/plugin.mjs）
 mise run format       # Prettier で整形
-mise run tests        # アップデート → lint → 整形チェック + ヘルプの検査
+mise run tests        # アップデート → 脆弱性の検査 → lint → 整形チェック + ヘルプの検査
 mise run docs-check   # ヘルプ・チュートリアルの検査（spec・tour があり、tour の対象が実在するか）
 mise run docs-stale   # main からコードを変えたのにヘルプを更新していない app を表示
 mise run dev <app>    # app を開発サーバーで起動
@@ -51,12 +52,13 @@ mise run deploy <app> # app をビルドしてデプロイ
 mise run chrome-check # 本番の全 app でヘッダー・フッター・メニューのバージョンが揃っているか検査
 ```
 
-`mise run check` / `lint` / `tests` は、検査の前に必ず `mise run update` を実行します。
+`mise run check` / `lint` / `tests` は、検査の前に必ず `mise run update`、続けて `mise run audit` を実行します。
 
-- `mise upgrade --bump --local` で mise.toml のツール（node / pnpm / ni / cf など）を、[npm-check-updates](https://github.com/raineorshine/npm-check-updates) でルートの package.json の依存を最新にし、インストールし直します。mise.toml・package.json・pnpm-lock.yaml が書き換わるので、検査が通ったら一緒にコミットします。
+- `mise upgrade --bump --local` で mise.toml のツール（node / pnpm / ni / cf など）を、[npm-check-updates](https://github.com/raineorshine/npm-check-updates) でルートの package.json の依存を最新にし、インストールし直します。間接依存も、許される範囲で最新にします。mise.toml・package.json・pnpm-lock.yaml が書き換わるので、検査が通ったら一緒にコミットします。
 - 最新にすると検査が動かなくなるパッケージは、`.ncurc.cjs` で上げ幅を絞ります（いまは astro check が未対応の TypeScript 7 だけ）。
+- `mise run audit` は `pnpm audit` で依存パッケージの脆弱性を検査し、1 件でもあれば失敗します。修正版がまだ無いものだけ、理由を添えて pnpm-workspace.yaml の `auditConfig.ignoreGhsas` に書きます。CI（デプロイ）でも実行します。
 - CI（デプロイ）ではアップデートせず、コミットされた lockfile どおりに検査します（検査していないバージョンをデプロイしないため）。
-- Claude Code では `.claude/settings.json` の Stop hook（`lint/hook.mjs`）が、アップデート → lint → テストの順に `mise run tests` を実行し、失敗したら一度だけ停止を止めます。
+- Claude Code では `.claude/settings.json` の Stop hook（`lint/hook.mjs`）が、アップデート → 脆弱性の検査 → lint → テストの順に `mise run tests` を実行し、失敗したら一度だけ停止を止めます。
 
 ## ヘルプ・チュートリアル・技術仕様
 
