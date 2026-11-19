@@ -13,6 +13,7 @@ import * as outline from "./outline";
 import * as project from "./project";
 import * as render from "./render";
 import * as richedit from "./richedit";
+import * as upscale from "./upscale";
 import * as snap from "./snap";
 import * as text from "./text";
 import * as warp from "./warp";
@@ -3042,7 +3043,52 @@ export const mount = (root: HTMLElement) => {
     };
   };
 
+  /** 拡大保存の倍率と拡大方法。倍率が読めないときは null */
+  const exportScaling = (): exporter.Scaling | null => {
+    const factor = Number(exportInput("scale").value);
+    if (
+      !Number.isFinite(factor) ||
+      factor < upscale.MIN_FACTOR ||
+      factor > upscale.MAX_FACTOR
+    )
+      return null;
+    const method = new FormData(exportForm).get("method");
+    return { factor, method: upscale.isMethod(method) ? method : "nearest" };
+  };
+
+  /** 拡大後の大きさを表示し、書き出せない倍率のときはボタンを押せなくする */
+  const syncExportScale = () => {
+    const scaling = exportScaling();
+    const size = doc && scaling ? exporter.scaledSize(doc, scaling) : null;
+    const enlarged = !!scaling && scaling.factor !== 1;
+    exportForm.querySelector<HTMLElement>("#export-method")!.hidden = !enlarged;
+    for (const chip of exportForm.querySelectorAll<HTMLElement>("[data-scale]"))
+      chip.setAttribute(
+        "aria-pressed",
+        String(Number(chip.dataset["scale"]) === scaling?.factor),
+      );
+    const label = exportForm.querySelector<HTMLElement>("#export-size")!;
+    if (doc)
+      label.textContent =
+        size && enlarged
+          ? `${doc.width} × ${doc.height} px → ${size.width} × ${size.height} px`
+          : `${doc.width} × ${doc.height} px`;
+    const error = exportForm.querySelector<HTMLElement>("#export-scale-error")!;
+    const ok = !!size && size.fits;
+    error.hidden = ok;
+    if (!ok && doc)
+      error.textContent = !scaling
+        ? `倍率は ${upscale.MIN_FACTOR}〜${upscale.MAX_FACTOR} の数で指定してください。`
+        : `拡大後の画像が大きすぎます。この作品は ${exporter.maxFactor(doc)} 倍まで拡大できます。`;
+    exportInput("scale").setAttribute("aria-invalid", String(!ok));
+    for (const button of exportForm.querySelectorAll<HTMLButtonElement>(
+      'button[value="save"], button[value="copy"]',
+    ))
+      button.disabled = !ok;
+  };
+
   const syncExportForm = () => {
+    syncExportScale();
     const format = exportFormat();
     const lossy = format === "jpeg" || format === "webp";
     const bySize = new FormData(exportForm).get("mode") === "size";
@@ -3081,8 +3127,17 @@ export const mount = (root: HTMLElement) => {
       event.target instanceof Element
         ? event.target.closest<HTMLElement>("[data-limit]")
         : null;
-    if (!chip) return;
-    exportInput("limit").value = chip.dataset["limit"]!;
+    if (chip) {
+      exportInput("limit").value = chip.dataset["limit"]!;
+      syncExportForm();
+      return;
+    }
+    const factor =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-scale]")
+        : null;
+    if (!factor) return;
+    exportInput("scale").value = factor.dataset["scale"]!;
     syncExportForm();
   });
   exportForm.addEventListener("submit", async (event) => {
@@ -3094,15 +3149,20 @@ export const mount = (root: HTMLElement) => {
       exportDialog.close();
       return;
     }
+    const scaling = exportScaling();
+    if (!scaling || !exporter.scaledSize(doc, scaling).fits) return;
     if (button) button.disabled = true;
     try {
       if (button?.value === "copy") {
-        await exporter.copyImage(doc, assets, cache);
+        await exporter.copyImage(doc, assets, cache, scaling);
         notify("画像をクリップボードにコピーしました。");
       } else {
         const limit = exportLimit();
         const note = exportForm.querySelector<HTMLElement>("#export-note")!;
         if (limit) note.textContent = "圧縮しています…";
+        else if (scaling.factor !== 1) note.textContent = "拡大しています…";
+        // 表示を書き換えてから、時間のかかる拡大を始める
+        await new Promise((resolve) => requestAnimationFrame(resolve));
         const result = await exporter.exportFile(
           doc,
           assets,
@@ -3110,6 +3170,7 @@ export const mount = (root: HTMLElement) => {
           exportFormat(),
           exportQuality(),
           limit,
+          scaling,
         );
         const packed = result.compressed;
         if (result.actual !== result.requested)
@@ -3126,7 +3187,11 @@ export const mount = (root: HTMLElement) => {
               : `上限に収まりませんでした。一番小さくした ${detail}で書き出しました。`,
             !packed.fitted,
           );
-        } else notify(`${formatBytes(result.size)}で書き出しました。`);
+        } else if (scaling.factor !== 1)
+          notify(
+            `${result.width} × ${result.height} px、${formatBytes(result.size)}で書き出しました。`,
+          );
+        else notify(`${formatBytes(result.size)}で書き出しました。`);
       }
       exportDialog.close();
     } catch {
@@ -3137,15 +3202,12 @@ export const mount = (root: HTMLElement) => {
         true,
       );
     } finally {
-      if (button) button.disabled = false;
       syncExportForm();
     }
   });
 
   const showExport = () => {
     if (!doc) return;
-    exportForm.querySelector<HTMLElement>("#export-size")!.textContent =
-      `${doc.width} × ${doc.height} px`;
     syncExportForm();
     exportDialog.showModal();
   };

@@ -3,6 +3,7 @@ import * as shared from "#shared";
 import Layout from "#ui/Layout.astro";
 import ToolIcon from "#ui/ToolIcon.astro";
 import * as exporter from "../lib/exporter";
+import * as upscale from "../lib/upscale";
 import * as model from "../lib/model";
 import * as project from "../lib/project";
 
@@ -34,7 +35,7 @@ const icons = {
   description={tool.description}
   spec={{
     overview:
-      "画像の読み込み（PNG・JPEG・WebP などのほか、PSD・PSB・AI・PDF・TIFF・SVG・HEIC）、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、背面のフィルター（下に重なる絵をレイヤーの形でぼかす・色を変える）、空間変形（奥に倒す・曲げる・4 隅を動かす）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と JavaScript）で行います。空間変形は形を網目に分けて WebGL で貼り、WebGL が使えない環境では Canvas だけで描きます。元の文字・画像はそのまま持ち、描くときにだけ変形するので、変形したテキストも打ち直せます。テキストの既定のフォントは LINE Seed JP で、Web フォント（Fontsource）・端末のフォント・フォントファイルも使えます。保存するときは、フォントの無い端末でも同じ見た目で表示できるよう、文字の形（パス）も作品ファイルに入れます。PSD は「開く」で開くとレイヤーを分けたまま読み込みます（グループは 1 列に並べ、テキストは画像になります。描画モード・マスク・レイヤー効果・調整レイヤーは再現しません）。AI は PDF 互換で保存したもの、PDF は 1 ページ目を画像として読み込みます。",
+      "画像の読み込み（PNG・JPEG・WebP などのほか、PSD・PSB・AI・PDF・TIFF・SVG・HEIC）、レイヤーの合成、フィルター（カラーフィルター・ガウスぼかし）、背面のフィルター（下に重なる絵をレイヤーの形でぼかす・色を変える）、空間変形（奥に倒す・曲げる・4 隅を動かす）、書き出し（PNG / JPEG / WebP / PSD）は、すべてブラウザ内（Canvas と JavaScript）で行います。書き出しの拡大保存は、ブラウザの補間を使わずに画素を自前で計算するので、どの端末でも同じ結果になります。ニアレストネイバーは色を混ぜずに元の画素をそのまま写し（整数倍なら 1 画素が倍率 × 倍率の正方形になり、PNG では元に無い色が出ません）、バイリニアは周りの 2 × 2 画素、バイキュービック（Catmull-Rom）は 4 × 4 画素を、不透明度を掛けた色で混ぜます。PSD はレイヤーごとの画像と位置を同じ倍率で拡大します。拡大後の大きさは、1 辺 8192 px・面積 4096 × 4096 px までです。空間変形は形を網目に分けて WebGL で貼り、WebGL が使えない環境では Canvas だけで描きます。元の文字・画像はそのまま持ち、描くときにだけ変形するので、変形したテキストも打ち直せます。テキストの既定のフォントは LINE Seed JP で、Web フォント（Fontsource）・端末のフォント・フォントファイルも使えます。保存するときは、フォントの無い端末でも同じ見た目で表示できるよう、文字の形（パス）も作品ファイルに入れます。PSD は「開く」で開くとレイヤーを分けたまま読み込みます（グループは 1 列に並べ、テキストは画像になります。描画モード・マスク・レイヤー効果・調整レイヤーは再現しません）。AI は PDF 互換で保存したもの、PDF は 1 ページ目を画像として読み込みます。",
     network:
       "開いた画像や入力した文字がサーバーへ送信されることはありません。Web フォントを選んだときだけ、そのフォントのファイル（使う文字の範囲の分だけ）を jsDelivr（cdn.jsdelivr.net）の Fontsource から読み込み、フォントの名前で探したときだけ、フォントの一覧を Fontsource（api.fontsource.org）から読み込みます。PSD の読み込み・書き出し、AI・PDF・TIFF・HEIC の読み込み、文字のパス化に使うライブラリは、使うときに同じサイトから読み込みます。ヘッダーのツール一覧を最新にするため、同じサイトからツール一覧（/menu）を読み込みます。",
     storage:
@@ -72,7 +73,7 @@ const icons = {
     {
       target: "#file-tools",
       title: "保存と書き出し",
-      body: "保存（Ctrl+S）で作品ファイル（.tbimg）を端末に保存し、あとで開いて続きから編集できます。「開く」では PSD（レイヤーを分けたまま）や AI なども開けます。書き出しでは PNG・JPEG・WebP の画像や、レイヤー付きの PSD（空間変形したレイヤーは変形後の画素で）を保存し、PNG はクリップボードにコピーもできます。JPEG・WebP は「1 MB 以下」のようにファイルサイズの上限を指定して圧縮できます。",
+      body: "保存（Ctrl+S）で作品ファイル（.tbimg）を端末に保存し、あとで開いて続きから編集できます。「開く」では PSD（レイヤーを分けたまま）や AI なども開けます。書き出しでは PNG・JPEG・WebP の画像や、レイヤー付きの PSD（空間変形したレイヤーは変形後の画素で）を保存し、PNG はクリップボードにコピーもできます。JPEG・WebP は「1 MB 以下」のようにファイルサイズの上限を指定して圧縮できます。どの形式でも、倍率を指定して拡大保存できます。拡大方法は、ニアレストネイバー（ドット絵をくっきり保つ）・バイリニア・バイキュービックから選べます。",
     },
   ]}
 >
@@ -1466,6 +1467,57 @@ const icons = {
               ))}
             </div>
           </fieldset>
+          <div id="export-scale" class="fields">
+            <label class="field">
+              <span class="field__label">拡大保存（倍率）</span>
+              <span class="limit">
+                <input
+                  class="input"
+                  type="number"
+                  name="scale"
+                  value="1"
+                  min={upscale.MIN_FACTOR}
+                  max={upscale.MAX_FACTOR}
+                  step="any"
+                  inputmode="decimal"
+                  aria-describedby="export-scale-error"
+                />
+                <span>倍</span>
+              </span>
+            </label>
+            <div class="chips__options">
+              {["1", "2", "3", "4", "8", "16"].map((value) => (
+                <button
+                  class="button button--small"
+                  type="button"
+                  data-scale={value}
+                >
+                  {value} 倍
+                </button>
+              ))}
+            </div>
+            <p id="export-scale-error" class="note note--error" hidden></p>
+          </div>
+          <fieldset id="export-method" class="seg" hidden>
+            <legend class="field__label">拡大方法</legend>
+            <div class="seg__options seg__options--stack">
+              {upscale.methods.map(([value, label, hint], i) => (
+                <label class="seg__option">
+                  <input
+                    class="seg__input"
+                    type="radio"
+                    name="method"
+                    value={value}
+                    checked={i === 0}
+                  />
+                  <span class="seg__label seg__label--hint">
+                    <span>{label}</span>
+                    <small>{hint}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <fieldset id="export-mode" class="seg" hidden>
             <legend class="field__label">圧縮</legend>
             <div class="seg__options">
@@ -2245,6 +2297,26 @@ const icons = {
     outline-offset: 2px;
   }
 
+  .seg__options--stack {
+    flex-direction: column;
+  }
+
+  .seg__label--hint {
+    justify-items: start;
+    gap: 0 var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    text-align: start;
+  }
+
+  .seg__label--hint small {
+    font-size: 0.75rem;
+    font-weight: 400;
+  }
+
+  .note.note--error {
+    color: var(--color-danger, #c62828);
+  }
+
   .chips {
     min-width: 0;
     margin: 0;
@@ -2725,7 +2797,8 @@ const icons = {
   }
 
   .warp-edit[aria-pressed="true"],
-  [data-limit][aria-pressed="true"] {
+  [data-limit][aria-pressed="true"],
+  [data-scale][aria-pressed="true"] {
     border-color: var(--color-accent);
     background: var(--color-accent-soft);
     font-weight: 700;
