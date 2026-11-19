@@ -40,34 +40,9 @@ export type Scaling = { factor: number; method: upscale.Method };
 
 export const NO_SCALING: Scaling = { factor: 1, method: "nearest" };
 
-/** 拡大後の大きさと、canvas に描ける大きさに収まるか（iOS Safari の上限に合わせる） */
-export const scaledSize = (doc: model.Doc, scaling: Scaling) => {
-  const { width, height } = upscale.size(doc.width, doc.height, scaling.factor);
-  return {
-    width,
-    height,
-    fits:
-      width <= model.MAX_SIDE &&
-      height <= model.MAX_SIDE &&
-      width * height <= model.MAX_AREA,
-  };
-};
-
-/** この作品を書き出せる一番大きい倍率（小数第 2 位で切り捨て） */
-export const maxFactor = (doc: model.Doc) =>
-  Math.max(
-    upscale.MIN_FACTOR,
-    Math.min(
-      upscale.MAX_FACTOR,
-      Math.floor(
-        Math.min(
-          model.MAX_SIDE / doc.width,
-          model.MAX_SIDE / doc.height,
-          Math.sqrt(model.MAX_AREA / (doc.width * doc.height)),
-        ) * 100,
-      ) / 100,
-    ),
-  );
+/** 拡大後の大きさ */
+export const scaledSize = (doc: model.Doc, scaling: Scaling) =>
+  upscale.size(doc.width, doc.height, scaling.factor);
 
 /** canvas の画素を拡大した canvas。等倍ならそのまま返す */
 const scaledCanvas = (
@@ -307,7 +282,6 @@ export const exportFile = async (
   scaling: Scaling = NO_SCALING,
 ) => {
   const size = scaledSize(doc, scaling);
-  if (!size.fits) throw new Error("拡大後の画像が大きすぎます。");
   let blob: Blob;
   let result: Awaited<ReturnType<typeof compress>> | null = null;
   if (format === "psd") blob = await psd(doc, assets, cache, scaling);
@@ -345,8 +319,6 @@ export const copyImage = async (
   cache: render.LayerCache,
   scaling: Scaling = NO_SCALING,
 ) => {
-  if (!scaledSize(doc, scaling).fits)
-    throw new Error("拡大後の画像が大きすぎます。");
   const blob = flatImage(doc, assets, cache, "png", 1, scaling);
   // Safari はユーザー操作の直後に write を呼ぶ必要があるので、Blob の Promise のまま渡す
   await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
