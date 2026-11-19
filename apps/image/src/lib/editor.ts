@@ -3068,6 +3068,8 @@ export const mount = (root: HTMLElement) => {
         size && enlarged
           ? `${doc.width} × ${doc.height} px → ${size.width} × ${size.height} px`
           : `${doc.width} × ${doc.height} px`;
+    exportForm.querySelector<HTMLOutputElement>("#export-result-size")!.value =
+      size ? `${size.width} × ${size.height} px` : "—";
     const error = exportForm.querySelector<HTMLElement>("#export-scale-error")!;
     const ok = !!scaling;
     error.hidden = ok;
