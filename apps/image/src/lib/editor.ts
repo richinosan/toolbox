@@ -3046,17 +3046,12 @@ export const mount = (root: HTMLElement) => {
   /** 拡大保存の倍率と拡大方法。倍率が読めないときは null */
   const exportScaling = (): exporter.Scaling | null => {
     const factor = Number(exportInput("scale").value);
-    if (
-      !Number.isFinite(factor) ||
-      factor < upscale.MIN_FACTOR ||
-      factor > upscale.MAX_FACTOR
-    )
-      return null;
+    if (!upscale.isFactor(factor)) return null;
     const method = new FormData(exportForm).get("method");
     return { factor, method: upscale.isMethod(method) ? method : "nearest" };
   };
 
-  /** 拡大後の大きさを表示し、書き出せない倍率のときはボタンを押せなくする */
+  /** 拡大後の大きさを表示する。倍率が数として読めないときだけ、ボタンを押せなくする */
   const syncExportScale = () => {
     const scaling = exportScaling();
     const size = doc && scaling ? exporter.scaledSize(doc, scaling) : null;
@@ -3073,13 +3068,12 @@ export const mount = (root: HTMLElement) => {
         size && enlarged
           ? `${doc.width} × ${doc.height} px → ${size.width} × ${size.height} px`
           : `${doc.width} × ${doc.height} px`;
+    exportForm.querySelector<HTMLOutputElement>("#export-result-size")!.value =
+      size ? `${size.width} × ${size.height} px` : "—";
     const error = exportForm.querySelector<HTMLElement>("#export-scale-error")!;
-    const ok = !!size && size.fits;
+    const ok = !!scaling;
     error.hidden = ok;
-    if (!ok && doc)
-      error.textContent = !scaling
-        ? `倍率は ${upscale.MIN_FACTOR}〜${upscale.MAX_FACTOR} の数で指定してください。`
-        : `拡大後の画像が大きすぎます。この作品は ${exporter.maxFactor(doc)} 倍まで拡大できます。`;
+    if (!ok) error.textContent = "倍率は 0 より大きい数で指定してください。";
     exportInput("scale").setAttribute("aria-invalid", String(!ok));
     for (const button of exportForm.querySelectorAll<HTMLButtonElement>(
       'button[value="save"], button[value="copy"]',
@@ -3150,7 +3144,7 @@ export const mount = (root: HTMLElement) => {
       return;
     }
     const scaling = exportScaling();
-    if (!scaling || !exporter.scaledSize(doc, scaling).fits) return;
+    if (!scaling) return;
     if (button) button.disabled = true;
     try {
       if (button?.value === "copy") {
@@ -3198,7 +3192,9 @@ export const mount = (root: HTMLElement) => {
       notify(
         button?.value === "copy"
           ? "クリップボードにコピーできませんでした。"
-          : "書き出せませんでした。",
+          : scaling.factor !== 1
+            ? "書き出せませんでした。拡大後の画像が大きすぎて、このブラウザでは作れない可能性があります。"
+            : "書き出せませんでした。",
         true,
       );
     } finally {
