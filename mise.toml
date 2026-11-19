@@ -126,6 +126,11 @@ run = "mise exec -- node lint/docs.mjs"
 description = "main からコードを変えたのにヘルプ・チュートリアル・技術仕様を更新していない app を表示"
 run = "node lint/docs.mjs --stale"
 
+[tasks.unit]
+description = "単体テスト（node --test。*.test.ts を実行する）"
+wait_for = ["update", "audit"]
+run = "mise exec -- node --test 'apps/**/*.test.ts' 'packages/**/*.test.ts'"
+
 [tasks."chrome-check"]
 description = "本番の全 app で共有部分（ヘッダー・フッター・メニュー）のバージョンが揃っているか検査（デプロイ直後は --wait）"
 usage = 'flag "--wait" help="反映を待って数回やり直す"'
@@ -136,9 +141,9 @@ description = "本番で共有部分のバージョンが手元のソースと�
 run = "node lint/chrome.mjs --stale"
 
 [tasks.tests]
-description = "アップデート → 脆弱性の検査 → lint・型チェック → 整形チェック・ヘルプの検査をまとめて実行"
+description = "アップデート → 脆弱性の検査 → lint・型チェック → 整形チェック・ヘルプの検査・単体テストをまとめて実行"
 alias = "test"
-depends = ["update", "audit", "lint", "format-check", "docs-check"]
+depends = ["update", "audit", "lint", "format-check", "docs-check", "unit"]
 
 [tasks.dev]
 description = "app を開発サーバーで起動（例: mise run dev calendar）"
