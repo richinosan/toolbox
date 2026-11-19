@@ -1474,6 +1474,7 @@ const icons = {
                 <input
                   class="input"
                   type="number"
+                  id="export-scale-input"
                   name="scale"
                   value="1"
                   step="any"
@@ -1494,6 +1495,10 @@ const icons = {
                 </button>
               ))}
             </div>
+            <p class="result-size" aria-live="polite">
+              <span>書き出す大きさ</span>
+              <output id="export-result-size" for="export-scale-input"></output>
+            </p>
             <p id="export-scale-error" class="note note--error" hidden></p>
           </div>
           <fieldset id="export-method" class="seg" hidden>
@@ -2309,6 +2314,20 @@ const icons = {
   .seg__label--hint small {
     font-size: 0.75rem;
     font-weight: 400;
+  }
+
+  .result-size {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    align-items: baseline;
+    font-size: 0.8125rem;
+  }
+
+  .result-size output {
+    font-size: 1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
   }
 
   .note.note--error {
