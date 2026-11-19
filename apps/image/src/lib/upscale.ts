@@ -9,8 +9,8 @@ export const methods: readonly (readonly [Method, string, string])[] = [
   ["bicubic", "バイキュービック", "なめらかで輪郭もはっきり（写真向け）"],
 ];
 
-export const MIN_FACTOR = 1;
-export const MAX_FACTOR = 64;
+/** 倍率として使える数か（0 より大きい数。上限は設けない） */
+export const isFactor = (value: number) => Number.isFinite(value) && value > 0;
 
 export const isMethod = (value: unknown): value is Method =>
   methods.some(([method]) => method === value);
