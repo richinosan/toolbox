@@ -24,6 +24,7 @@
     "@astrojs/check": "^0.9.12",
     "@cloudflare/build-output-utils": "0.9.14",
     "@cloudflare/config": "0.32.1",
+    "@stryker-mutator/core": "^10.1.1",
     "@types/fontkit": "^2.0.9",
     "@types/luxon": "^3.7.6",
     "@types/node": "^26.6.6",
