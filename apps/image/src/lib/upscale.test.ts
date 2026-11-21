@@ -81,6 +81,29 @@ test.describe("ニアレストネイバー", () => {
       assert.equal(used.size, colors.size);
     });
 
+  test.test("1/3 倍：元の 3 × 3 画素ごとに、真ん中の画素が残る", () => {
+    const [width, height] = [9, 6];
+    const source = sample(width, height);
+    const size = upscale.size(width, height, 1 / 3);
+    assert.deepEqual(size, { width: 3, height: 2 });
+    const result = upscale.pixels(
+      source,
+      width,
+      height,
+      size.width,
+      size.height,
+      "nearest",
+    );
+    assert.equal(result.length, size.width * size.height * 4);
+    for (let y = 0; y < size.height; y++)
+      for (let x = 0; x < size.width; x++)
+        assert.equal(
+          pixel(result, size.width, x, y),
+          pixel(source, width, x * 3 + 1, y * 3 + 1),
+          `(${x}, ${y})`,
+        );
+  });
+
   test.test("市松模様の境目がぼけない", () => {
     const source = new Uint8ClampedArray(2 * 2 * 4);
     for (const [i, value] of [0, 255, 255, 0].entries())
@@ -101,6 +124,17 @@ for (const method of ["bilinear", "bicubic"] as const)
         assert.equal(
           pixel(result, 12, i % 12, Math.floor(i / 12)),
           "200,100,50,255",
+        );
+    });
+
+    test.test("半透明の単色の画像は、色も不透明度も同じまま", () => {
+      const source = new Uint8ClampedArray(4 * 3 * 4);
+      for (let i = 0; i < 12; i++) source.set([200, 100, 50, 128], i * 4);
+      const result = upscale.pixels(source, 4, 3, 12, 9, method);
+      for (let i = 0; i < 12 * 9; i++)
+        assert.equal(
+          pixel(result, 12, i % 12, Math.floor(i / 12)),
+          "200,100,50,128",
         );
     });
 
@@ -127,6 +161,76 @@ for (const method of ["bilinear", "bicubic"] as const)
     });
   });
 
+// 明るさ 100 と 200 の 2 画素を 4 画素に拡大したときの値。
+// 拡大後の画素の中心は、元の画素の中心を 0、1 として -0.25、0.25、0.75、1.25 に来る。
+// バイリニアは 2 画素の間をまっすぐつなぐ（外側は端の値）。
+// バイキュービック（Catmull-Rom）は両隣 2 画素ずつを使い、境目の外側で元の範囲を少しはみ出す。
+// 3 つ目は、0、100、200 の 3 画素を 6 画素に拡大したときの値。
+const gradients = [
+  ["bilinear", [100, 125, 175, 200], [0, 25, 75, 125, 175, 200]],
+  ["bicubic", [93, 120, 180, 207], [0, 18, 73, 127, 182, 207]],
+] as const;
+
+/** 明るさだけの不透明な画素 */
+const gray = (values: readonly number[]) =>
+  new Uint8ClampedArray(values.flatMap((value) => [value, value, value, 255]));
+/** 明るさだけの不透明な画素であることを確かめて、明るさを取り出す */
+const values = (data: Uint8ClampedArray) => {
+  const result: number[] = [];
+  for (let i = 0; i < data.length; i += 4) {
+    assert.equal(data[i + 1], data[i], "緑が赤と同じ");
+    assert.equal(data[i + 2], data[i], "青が赤と同じ");
+    assert.equal(data[i + 3], 255, "不透明のまま");
+    result.push(data[i]!);
+  }
+  return result;
+};
+
+for (const [method, expected, wider] of gradients)
+  test.describe(`${method}：100 と 200 の 2 画素を 4 画素に拡大した値`, () => {
+    test.test("横に拡大", () => {
+      const result = upscale.pixels(gray([100, 200]), 2, 1, 4, 1, method);
+      assert.deepEqual(values(result), expected);
+    });
+
+    test.test("3 画素を 6 画素に拡大：途中の画素も両隣とつながる", () => {
+      const result = upscale.pixels(gray([0, 100, 200]), 3, 1, 6, 1, method);
+      assert.deepEqual(values(result), wider);
+    });
+
+    test.test("縦に拡大", () => {
+      const result = upscale.pixels(gray([100, 200]), 1, 2, 1, 4, method);
+      assert.deepEqual(values(result), expected);
+    });
+
+    test.test("横だけ拡大：どの行も同じ値になる", () => {
+      const result = upscale.pixels(
+        gray([100, 200, 100, 200, 100, 200]),
+        2,
+        3,
+        4,
+        3,
+        method,
+      );
+      assert.deepEqual(values(result), [...expected, ...expected, ...expected]);
+    });
+
+    test.test("縦だけ拡大：どの列も同じ値になる", () => {
+      const result = upscale.pixels(
+        gray([100, 100, 100, 200, 200, 200]),
+        3,
+        2,
+        3,
+        4,
+        method,
+      );
+      assert.deepEqual(
+        values(result),
+        expected.flatMap((value) => [value, value, value]),
+      );
+    });
+  });
+
 test.test("等倍は元の画素と同じ", () => {
   const source = sample(4, 4);
   for (const [method] of upscale.methods)
@@ -134,7 +238,34 @@ test.test("等倍は元の画素と同じ", () => {
 });
 
 test.test("画素の数が大きさと合わないときはエラーにする", () => {
-  assert.throws(() =>
-    upscale.pixels(new Uint8ClampedArray(8), 4, 4, 8, 8, "nearest"),
+  for (const [method] of upscale.methods)
+    assert.throws(
+      () => upscale.pixels(new Uint8ClampedArray(8), 4, 4, 8, 8, method),
+      { message: "画素の数が大きさと合いません。" },
+    );
+});
+
+test.test("拡大の方法は 3 つで、それぞれ名前と説明がある", () => {
+  assert.deepEqual(
+    upscale.methods.map(([method]) => method),
+    ["nearest", "bilinear", "bicubic"],
   );
+  for (const [method, name, description] of upscale.methods) {
+    assert.ok(name, `${method} の名前`);
+    assert.ok(description, `${method} の説明`);
+  }
+});
+
+test.test("拡大の方法として使える値だけを認める", () => {
+  for (const [method] of upscale.methods)
+    assert.equal(upscale.isMethod(method), true, method);
+  for (const value of ["lanczos", "", "NEAREST", undefined, null, 2])
+    assert.equal(upscale.isMethod(value), false, String(value));
+});
+
+test.test("倍率は 0 より大きい数だけを認める（上限は無い）", () => {
+  for (const value of [0.01, 0.5, 1, 2.5, 16, 1e9])
+    assert.equal(upscale.isFactor(value), true, String(value));
+  for (const value of [0, -1, Number.NaN, Infinity, -Infinity])
+    assert.equal(upscale.isFactor(value), false, String(value));
 });
