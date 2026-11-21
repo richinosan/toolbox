@@ -17,6 +17,10 @@ packageExtensions:
 # 含まれるので、その範囲に解決されたときは修正済みのバージョンへ引き上げる。
 overrides:
   "vite@>=8.0.0 <8.3.7": "^8.3.7"
+  # @stryker-mutator/core（mise run mutation）経由でだけ入る。Stryker が許す範囲に脆弱性のあるバージョンしか無いので、
+  # 修正済みのバージョンへ引き上げる（qs: GHSA-6pq8-jhm2-2vcw ほか、6.16.1 で修正。minimatch: GHSA-g3hv-75wg-m249、11.0.1 で修正）。
+  "qs@<6.16.1": "^6.16.1"
+  "minimatch@<11.0.1": "^11.0.1"
 # pnpm audit（mise run audit）で無視する脆弱性。修正版がまだ無いものだけを、理由を添えて書く。修正版が出たら消す。
 auditConfig:
   ignoreGhsas:
