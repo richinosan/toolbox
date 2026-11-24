@@ -131,6 +131,11 @@ description = "単体テスト（node --test。*.test.ts を実行する）"
 wait_for = ["update", "audit"]
 run = "mise exec -- node --test 'apps/**/*.test.ts' 'packages/**/*.test.ts'"
 
+[tasks.mutation]
+description = "ミューテーションテスト（Stryker。実装をわざと書き換えて、単体テストが検出できるかを調べる）"
+# 対象は、隣に *.test.ts がある実装（stryker.config.mjs）。結果は tmp/mutation/index.html にも出る。
+run = "stryker run"
+
 [tasks."chrome-check"]
 description = "本番の全 app で共有部分（ヘッダー・フッター・メニュー）のバージョンが揃っているか検査（デプロイ直後は --wait）"
 usage = 'flag "--wait" help="反映を待って数回やり直す"'
